@@ -26,6 +26,7 @@ local currentAddress = {}
 local listeningPorts = {160}
 local commandLog = {} --table.insert(commandLog, sender.." "..self.command)
 local threads = {} --threads.example = thread.create(function() end); threads.example:kill(); threads.example:suspend()
+local lastReceived = {} -- for wireless messages
 
 term.clear()
 if component.isAvailable("modem") then
@@ -86,7 +87,6 @@ local function strsplit(inputstr, sep)
     return t
 end
 
-local lastReceived = {} -- for wireless messages
 local EventListeners = {
     --stargate_spin_chevron_engaged = event.listen("stargate_spin_chevron_engaged", function(_, _, caller, num, lock, glyph) end),
 
@@ -141,7 +141,7 @@ local EventListeners = {
                     print("Processing command: "..command)
                     --os.sleep(0.1) --seems like its needed?
                     if command == "dial" then
-                        if threads.dialing then threads.dialing:kill() end
+                        if threads.dialing then threads.dialing:kill() end --could add a check to see if the partial address dialed matches the current one and continue from there
                         threads.dialing = thread.create(function() 
                             -- put this in a new thread
                             print("Attempting to dial address...\nCurrent gate type is "..gateType)
@@ -217,21 +217,25 @@ local EventListeners = {
                             
                         end)
                     elseif command == "close" then
-                        local gateStatus = stargate.getGateStatus()
-                        if gateStatus == "open" then 
-                            stargate.disengageGate()
-                            print("Resetting address...")
-                        elseif gateStatus == "dialing" then
-                            stargate.abortDialing()
-                            print("Aborting dialing...")
+                        lastReceived[sender] = lastReceived[sender] or currentTime-3
+                        if currentTime - lastReceived[sender] > 2 then
+                            lastReceived[sender] = currentTime
+                            local gateStatus = stargate.getGateStatus()
+                            if gateStatus == "open" then 
+                                stargate.disengageGate()
+                                print("Resetting address...")
+                            elseif gateStatus == "dialing" then
+                                stargate.abortDialing()
+                                print("Aborting dialing...")
+                            end
                         end
                     elseif command == "iris" then
-
+                        --todo
                     elseif command == "query" then
-                        lastReceived[sender] = lastReceived[sender] or currentTime-2
-                        if currentTime - lastReceived[sender] > 1 then
+                        lastReceived[sender] = lastReceived[sender] or currentTime-6
+                        if currentTime - lastReceived[sender] > 5 then
                             lastReceived[sender] = currentTime
-                            local returntbl = "gds"..serialization.serialize({
+                            local returntbl = "gdsgate"..serialization.serialize({
                                 gateType = gateType;
                                 Address = {
                                     MW = stargate.stargateAddress.MILKYWAY;
@@ -240,7 +244,7 @@ local EventListeners = {
                                 };
                                 uuid = modem.address
                             })
-                            send(sender, port, returntbl)
+                            threads.send= thread.create(send, sender, port, returntbl)
                             print(returntbl)
                         end
                     elseif command == "" then
