@@ -74,9 +74,9 @@ end
 if filesystem.exists("/gds/clientinterface.lua") or filesystem.exists("/gds/gatecomputer.lua") then
     print("GDS is already installed, would you like to update?")
     term.setCursorBlink(true)
-    io.write(" Yes/No: ")
+    io.write(" yes/no: ")
     local userInput = io.read("*l")
-    if (userInput:lower()):sub(1,1) ~= "y" then
+    if userInput:lower():sub(1,1) ~= "y" or userInput ~= "" then
         print("Cancelling installation...")
         os.exit(true)
     end
