@@ -1,0 +1,95 @@
+address Dialing System
+Concept: GDS will be operated by tablet only with a very lightweight interface with an integrated command bar, output, and address window
+         the actual dialing will be executed by a (gate) computer connected to the gate at the address
+         known addresses will be stored on the tablet, but can also be exported/synced/shared
+         the output window will show color coded outputs, e.g., "dialing from some_address: ?", and upon recieving signal from the dialing computer, the output message will be updated
+         yellow = processing, green = success, red = failed
+         note: color coded is kind of weird in OC so maybe not color coded, or at least low priority
+
+features to impliment
+    add in saveToSettings function at the end of the program
+    add optional signal encryption with user-chosen password (decryption key) for private networks
+    add in address verification via pinging nearby gates with getRequiredEnergyToDial
+        ^ note: could use a linked card connected to the primary gate, if there is one, and use it to verify the energy required to dial if its loaded
+    add scrolling to output window
+    fix bottom of list scrolling of guilist object API
+    accouncement of incoming and outgoing wormholes if the gate is in the database
+    gate-computer query system for nearby gates
+        note: gates that aren't already in the database will be entered with their name as the UUID of the stargate component with all three addresses known to the gate computer
+    gate dialing computer program
+    user-user and in-general address/database sharing 
+    user-gatecomputer database export (only works if the specified gate computer has a floppy disk and disk drive available)
+    database exporting to floppy (unsure)
+    multiple IDCs per address (unsure of the rules with this)
+    short range toggle-able chat system (maybe a tab on the output window if chatting = true) (low priority)
+        ^ note: will need to add block command to ignore messages from certain players in the instance of abuse (spam) or whatever
+    buffer of previous commands in order (20 indexes), selectable with up and down arrow
+
+commands usage/documentation:
+    use case example:
+        semicolon is the command prefix which is how the program determins what is or isn't a command
+        ;command ... ;command ... (<- sequential)
+
+    set [option]
+        range/radius [number in range from 16 to 400]
+
+    get [option]
+        nearby - sends out a modem signal to query and update the nearby dialing computers to the local gates list
+        last - shows data about the last dialed address
+        address/adrs [name] [glyphset] - shows the desired set of glyphs at the address if known
+        memoryusage/memuse/mem/mu - shows the current % and total memory used
+    
+    redial [address]
+        redials the last dialed address or last address dialed from the last gate used
+
+    dial [address A] [address B] [timeout]
+        dials the address from A to B with an optional timeout
+        example: dial AlphaSite Homebase 30
+
+    dial [address]
+        dials the address from the last used gate if possible, or the nearest gate
+        example: dial Alphasite
+
+    close [address]
+        if nil, use last address
+        example: close Alphasite
+        example: close
+
+    abort [address]
+        aborts the dialing sequence of the gate at the specified address or the last gate used 
+
+    iris [state]
+        on - activates iris
+        off - deactivates iris
+        nil - toggles iris
+
+    select/choose/slt [option]
+        address [name]
+            example: select address Homebase
+        address [type (MW, UNI, PG)] [index] - selected the first address of that type nearby or the index given if that index of that type exists
+            example: select address MW 3
+            example: select adrs MW furthest
+            example: select adrs MW 
+                        ^ returns the nearest 
+
+    edit [option]
+        address/adrs [name] [glyphset (MW, UNI, PG)] symbol 1, symbol 2, ... - creates or modifies an address with name and symbols
+            example: edit home MW symbol 1, symbol 2, ...
+        address/adrs [name] [uuid] uniqueid - creates or modifies a known address with a component uuid
+            example: edit home uuid 1234
+        address/adrs [name] [idc] name code
+            example: edit home idc TheHomie 1234
+
+    rename/rname/rn/ [option]
+        address/adrs [name A] [name B]
+            example: rn AlphaSite BetaSite
+
+    add [option]
+        address/adrs [name] [glyphset (MW, UNI, PG)] [symbols (not case sensitive)] - attempts to create an address with name and symbols
+        address/adrs [name] [uuid] - creates known a address from a component matching the uuid if applicable
+                ^ note: this works best when working with gates shown in the local gates tab that aren't yet indexed in the database since they are shown with OC uuids
+        idc [address] [code] 
+                ^ note: idc[code] = name <-- automatic
+
+    quit/exit/close
+        exits the program
