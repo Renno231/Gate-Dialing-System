@@ -621,7 +621,7 @@ end
 processInput("GDS", "Do ;help or ;cmds to see commands.")
 modem.open(settings.networkPort)
 -- end of command processing
-
+recordToOutput("Test: "..tostring(findEntry(database[1].Address, MW)).." "..tostring(database[2].Address, "MW"))
 --event listeners
 local restrictedKeyCodes = {[14] = true; [15] = true; [28]=true; [29]=true; [42] = true; [54] = true; [56] = true; [58] = true}
 local EventListeners = {
@@ -637,7 +637,7 @@ local EventListeners = {
                     if timeReceived - lastReceived[msgdata.uuid] > 5 then
                         lastReceived[msgdata.uuid] = timeReceived
                         recordToOutput("Receiving address data from.."..msgdata.uuid)
-                        local existingEntry = findEntry(msgdata.uuid) or findEntry(newAddress, gateType)
+                        local existingEntry = findEntry(msgdata.uuid) --or findEntry(newAddress, gateType)
                         if existingEntry then
                             local alreadyInNearby = false
                             for i=1,#nearbyGatesList.entries do
