@@ -24,11 +24,29 @@ if (opts.c==nil and opts.g==nil) or (opts.c and opts.g) then
     os.exit(false)
 end
 
-local function downloadFile(fileName, directory)
-    print("Downloading..."..fileName)
+local function strsplit(inputstr, sep)
+    if sep == nil then
+        sep = "%s"
+    end
+    local t={}
+    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+        table.insert(t, str)
+    end
+    return t
+end
+
+local function downloadFile(filePath, directory)
+    print("Downloading..."..filePath)
     local result = ""
-    local response = internet.request(BranchURL..fileName)
+    local response = internet.request(BranchURL..filePath)
+    local fileName = strsplit(filePath,"/")
     local success, err = pcall(function()
+        fileName = fileName[#fileName]
+        if type(directory)=="string" and directory~="" then
+            if not filesystem.isDirectory(directory) then
+                filesystem.makeDirectory(directory)
+            end
+        end
         local file, err = io.open((directory or "")..fileName, "w")
         if file == nil then error(err) end
         for chunk in response do
@@ -67,6 +85,7 @@ end
 print("Retrieving files...")
 if filesystem.exists("/gds/clientinterface.lua") or opts.c~=nil then --c = controller
     --pull latest and GUI libraries
+    --shell.setWorkingDirectory("/gds/")
     downloadFile("clientinterface.lua","/gds/")
     downloadFile("libraries/guilist.lua","/lib/")
     downloadFile("libraries/guiwindow.lua","/lib/")
@@ -74,6 +93,7 @@ if filesystem.exists("/gds/clientinterface.lua") or opts.c~=nil then --c = contr
     downloadFile("libraries/guibutton.lua","/lib/")
 elseif filesystem.exists("/gds/gatecomputer.lua") or opts.g~=nil then --g = gate
     --pull latest 
+    --shell.setWorkingDirectory("/gds/")
     downloadFile("gatecomputer.lua","/gds/")
 end
 downloadFile("gds.lua","/bin/")
