@@ -83,7 +83,7 @@ end
 
 local function scanNearby()
     if computer.uptime()-lastBroadcasted > 1 then
-        broadcast(settings.networkPort, string.format('gds{command = "query", user = {name = %q}}', lastUser))
+        broadcast(settings.networkPort, string.format('gds{command = "query", user = {name = %q}}', lastUser or "unknown"))
     end
 end
 
