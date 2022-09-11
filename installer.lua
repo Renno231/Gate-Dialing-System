@@ -19,6 +19,10 @@ if not hasInternet then
     io.stderr:write("No internet connection present. Insert an internet card to install.\n")
     os.exit(false)
 end
+if (opts.c==nil and opts.g==nil) or (opts.c and opts.g) then
+    print("In order to install GDS you must run \n/home/installer.lua -c\nor /home/installer.lua -g\nThe -c option installs the user interface which can be used on a tablet whereas the -g option installs the gate computer program. Including an 'a' in the options will create the autorun file.")
+    os.exit(false)
+end
 
 local function downloadFile(fileName, directory)
     print("Downloading..."..fileName)
@@ -84,4 +88,4 @@ print([[
 Installation complete!
 Use the 'gds' system command to run the Gate Dialing System.
 ]])--^  add in some arguments
-filesystem.remove("installer.lua")
+filesystem.remove("/home/installer.lua")
