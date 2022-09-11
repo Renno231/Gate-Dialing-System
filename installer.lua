@@ -76,7 +76,7 @@ if filesystem.exists("/gds/clientinterface.lua") or filesystem.exists("/gds/gate
     term.setCursorBlink(true)
     io.write(" yes/no: ")
     local userInput = io.read("*l")
-    if userInput:lower():sub(1,1) ~= "y" or userInput ~= "" then
+    if (userInput:lower()):sub(1,1) ~= "y" then
         print("Cancelling installation...")
         os.exit(true)
     end
