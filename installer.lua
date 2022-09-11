@@ -75,6 +75,11 @@ elseif filesystem.exists("/gds/gatecomputer.lua") then
     downloadFile("gatecomputer.lua","/gds/")
 end
 downloadFile("gds.lua","/bin/")
+if opts.a then --autorun
+    local file = io.open("/autorun.lua", "w")
+    file:write([[require("shell").execute("/bin/gds.lua")]])
+    file:close()
+end
 
 print([[
 Installation complete!
