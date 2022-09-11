@@ -177,13 +177,15 @@ local function findEntry(selector, addresstype) --address type is optional and o
             end
         end
     elseif type(selector) == "table" and type(addresstype) == "string" then
-        local concatAdrs = table.concat(selector, ", ")
+        local concatAdrs = table.concat(selector[addresstype], ", ")
         for i, entry in ipairs (database) do
-            local concatEntry = table.concat(entry.Address[addresstype],", ")
-            if (concatEntry:sub(1, concatAdrs:len()) == concatAdrs or concatAdrs:sub(1, concatEntry:len()) == concatEntry) then --check for POI?
-                foundEntry = entry
-                entryIndex = i
-                break
+            if entry.Address[addresstype] ~= nil then
+                local concatEntry = table.concat(entry.Address[addresstype],", ")
+                if (concatEntry:sub(1, concatAdrs:len()) == concatAdrs or concatAdrs:sub(1, concatEntry:len()) == concatEntry) then --check for POI?
+                    foundEntry = entry
+                    entryIndex = i
+                    break
+                end
             end
         end
     end
@@ -621,7 +623,7 @@ end
 processInput("GDS", "Do ;help or ;cmds to see commands.")
 modem.open(settings.networkPort)
 -- end of command processing
-recordToOutput("Test: "..tostring(findEntry(database[1].Address, MW)).." "..tostring(database[2].Address, "MW"))
+
 --event listeners
 local restrictedKeyCodes = {[14] = true; [15] = true; [28]=true; [29]=true; [42] = true; [54] = true; [56] = true; [58] = true}
 local EventListeners = {
@@ -629,15 +631,15 @@ local EventListeners = {
         if type(msg) == "string" then
             if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
                 local msgdata = load("return "..msg:sub(8))() --{gateType, address = {MW = ..., }, uuid = modem.address}
-                local gateType = msgdata.gateType
+                local newGateType = msgdata.gateType
                 local newAddress = msgdata.Address
                 local timeReceived = computer.uptime()
                 if msgdata.uuid then
                     lastReceived[msgdata.uuid] = lastReceived[msgdata.uuid] or timeReceived-6
                     if timeReceived - lastReceived[msgdata.uuid] > 5 then
                         lastReceived[msgdata.uuid] = timeReceived
-                        recordToOutput("Receiving address data from.."..msgdata.uuid)
-                        local existingEntry = findEntry(msgdata.uuid) --or findEntry(newAddress, gateType)
+                        recordToOutput("Receiving address data from.."..msgdata.uuid.." of type "..newGateType)
+                        local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, newGateType)
                         if existingEntry then
                             local alreadyInNearby = false
                             for i=1,#nearbyGatesList.entries do
@@ -659,7 +661,7 @@ local EventListeners = {
                                 Name = msgdata.Name or msgdata.uuid;
                                 Address = newAddress;
                                 IDCs = {};
-                                Type = gateType;
+                                Type = newGateType;
                                 UUID = msgdata.uuid;
                             }
                             table.insert(database, newEntry)
