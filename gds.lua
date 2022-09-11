@@ -10,7 +10,7 @@ if opts.u then --update
     local gdsType = (filesystem.exists("/gds/clientinterface.lua") and "-c") or (filesystem.exists("/gds/gatecomputer.lua") and "-g")
     shell.execute("/home/installer.lua "..gdsType)
 elseif (opts.c or opts.g) then
-    if not filesystem.exists("/home/installer.lua" then
+    if not filesystem.exists("/home/installer.lua") then
         shell.execute("wget -f https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/installer.lua")
     end
     shell.execute("/home/installer.lua "..options)
