@@ -122,12 +122,19 @@ local function readDatabaseFile()
     databaseList.entries = {}
     historyList.entries = {}
     database, history = dofile(DatabaseFile)
-
-    for i, entry in ipairs(database) do
-        databaseList:addEntry(entry.Name, nil, false)
+    if database then
+        for i, entry in ipairs(database) do
+            databaseList:addEntry(entry.Name, nil, false)
+        end
+    else
+        database = {}
     end
-    for i, entry in ipairs(history) do
-        historyList:addEntry(entry.Name, nil, false)
+    if history then
+        for i, entry in ipairs(history) do
+            historyList:addEntry(entry.Name, nil, false)
+        end
+    else
+        history = {}
     end
 end
 
