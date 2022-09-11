@@ -4,20 +4,18 @@ Purpose: GDS installer
 ]]--
 
 local component = require("component")
-local serialization = require("serialization")
 local filesystem = require("filesystem")
 local shell = require("shell")
 local term = require("term")
-local gpu = component.gpu
 local internet = nil
-local HasInternet = component.isAvailable("internet")
+local hasInternet = component.isAvailable("internet")
 local BranchURL = "https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/"
-if HasInternet then 
+if hasInternet then 
     internet = require("internet") 
 end
 
 local args, opts = shell.parse(...)
-if not HasInternet then
+if not hasInternet then
     io.stderr:write("No internet connection present. Insert an internet card to install.\n")
     os.exit(false)
 end
