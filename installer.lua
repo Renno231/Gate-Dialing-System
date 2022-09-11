@@ -63,14 +63,14 @@ if filesystem.exists("/gds/clientinterface.lua") or filesystem.exists("/gds/gate
 end
 
 print("Retrieving files...")
-if filesystem.exists("/gds/clientinterface.lua") then
+if filesystem.exists("/gds/clientinterface.lua") or opts.c~=nil then --c = controller
     --pull latest and GUI libraries
     downloadFile("clientinterface.lua","/gds/")
     downloadFile("libraries/guilist.lua","/lib/")
     downloadFile("libraries/guiwindow.lua","/lib/")
     downloadFile("libraries/guitextbox.lua","/lib/")
     downloadFile("libraries/guibutton.lua","/lib/")
-elseif filesystem.exists("/gds/gatecomputer.lua") then
+elseif filesystem.exists("/gds/gatecomputer.lua") or opts.g~=nil then --g = gate
     --pull latest 
     downloadFile("gatecomputer.lua","/gds/")
 end
@@ -79,10 +79,11 @@ if opts.a then --autorun
     local file = io.open("/autorun.lua", "w")
     file:write([[require("shell").execute("/bin/gds.lua")]])
     file:close()
+    print("Created /autorun.lua")
 end
 
 print([[
 Installation complete!
 Use the 'gds' system command to run the Gate Dialing System.
 ]])--^  add in some arguments
-
+filesystem.remove("installer.lua")
