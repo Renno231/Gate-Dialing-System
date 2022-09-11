@@ -83,7 +83,7 @@ if filesystem.exists("/gds/clientinterface.lua") or filesystem.exists("/gds/gate
 end
 
 print("Retrieving files...")
-if filesystem.exists("/gds/clientinterface.lua") or opts.c~=nil then --c = controller
+if (filesystem.exists("/gds/clientinterface.lua") and not filesystem.exists("/gds/gatecomputer.lua")) or opts.c~=nil then --c = controller
     --pull latest and GUI libraries
     --shell.setWorkingDirectory("/gds/")
     downloadFile("clientinterface.lua","/gds/")
@@ -91,7 +91,7 @@ if filesystem.exists("/gds/clientinterface.lua") or opts.c~=nil then --c = contr
     downloadFile("libraries/guiwindow.lua","/lib/")
     downloadFile("libraries/guitextbox.lua","/lib/")
     downloadFile("libraries/guibutton.lua","/lib/")
-elseif filesystem.exists("/gds/gatecomputer.lua") or opts.g~=nil then --g = gate
+elseif (filesystem.exists("/gds/gatecomputer.lua") and not filesystem.exists("/gds/clientinterface.lua")) or opts.g~=nil then --g = gate
     --pull latest 
     --shell.setWorkingDirectory("/gds/")
     downloadFile("gatecomputer.lua","/gds/")
