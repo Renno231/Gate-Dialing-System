@@ -170,7 +170,7 @@ local function findEntry(selector, addresstype) --address type is optional and o
     elseif type(selector) == "string" then
         selector = string.gsub(selector, "_", " ")
         for i, entry in ipairs (database) do
-            if (entry.Name:sub(1, selector:len()):lower() == selector:lower() and entry.Name:len()~=selector:len()) or entry.uuid == selector then
+            if (entry.Name:lower()==selector:lower() or entry.Name:sub(1, selector:len()):lower() == selector:lower()) or entry.uuid == selector then
                 foundEntry = entry
                 entryIndex = i
                 break
@@ -503,6 +503,7 @@ local commands = {
         if args[2] and args[3] then
             local gateA, gateAIndex = findEntry(args[2])
             local gateB, gateBIndex = findEntry(args[3])
+            returnstr = "Invalid arguments."
             if gateAIndex and gateBIndex then
                 database[gateBIndex], databaseList.entries[gateBIndex] = gateA, gateA.Name
                 database[gateAIndex], databaseList.entries[gateAIndex] = gateB, gateB.Name
