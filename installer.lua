@@ -48,12 +48,8 @@ local function downloadFile(filePath, directory)
                 filesystem.makeDirectory(directory)
             end
         end
-        if filesystem.exists(absolutePath) then
-            filesystem.remove(absolutePath)
-            print("Removed old file...")
-        end
         local file, err = io.open(absolutePath, "w")
-        if file == nil then error(err) else print("Making replacement...") end
+        if file == nil then error(err) end
         for chunk in response do
             file:write(chunk)
         end
