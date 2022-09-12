@@ -177,13 +177,15 @@ local function findEntry(selector, addresstype) --address type is optional and o
             end
         end
     elseif type(selector) == "table" and type(addresstype) == "string" then
-        local concatAdrs = table.concat(selector, ", ")
+        local concatAdrs = table.concat(selector[addresstype], ", ")
         for i, entry in ipairs (database) do
-            local concatEntry = table.concat(entry.Address[addresstype],", ")
-            if (concatEntry:sub(1, concatAdrs:len()) == concatAdrs or concatAdrs:sub(1, concatEntry:len()) == concatEntry) then --check for POI?
-                foundEntry = entry
-                entryIndex = i
-                break
+            if entry.Address[addresstype] ~= nil then
+                local concatEntry = table.concat(entry.Address[addresstype],", ")
+                if (concatEntry:sub(1, concatAdrs:len()) == concatAdrs or concatAdrs:sub(1, concatEntry:len()) == concatEntry) then --check for POI?
+                    foundEntry = entry
+                    entryIndex = i
+                    break
+                end
             end
         end
     end
@@ -253,8 +255,10 @@ historyList = listapi.List.new("History", gateOperator.size.x*0.8,   gateOperato
 
 local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, nearbyGatesList.pos.y + 5, 1, 1, "Dial", function() 
     if databaseList.currententry and nearbyGatesList.currententry then
-        local gateA, gateB = nearbyGatesList.entries[nearbyGatesList.currententry], databaseList.entries[databaseList.currententry]
-        processInput(lastUser, settings.prefix.."dial "..gateA.." "..gateB) 
+        local gateA = nearbyGatesList.entries[nearbyGatesList.currententry]
+        if gateA then
+            processInput(lastUser, settings.prefix.."dial "..string.gsub(gateA," ","_").." "..databaseList.currententry) 
+        end
     end
 end)
 
@@ -413,10 +417,11 @@ local commands = {
         local args = {...}
         local returnstr = "Insufficient arguments."
         if (args[2] == "address" or args[2] == "adrs" or args[2]=="entry") and type(args[3]) == "string" and (args[4] == "MW" or args[4] == "UN" or args[4] == "PG" or args[4] == "mw" or args[4] == "UN" or args[4] == "pg") then
+            args[3] = string.gsub(args[3], "_", " ")
             local foundEntry = findEntry(args[3])
             local entryAddress = {args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12],}
             local validAddress = true
-            local gateType = args[4]
+            local gateType = args[4]:upper()
             for i, glyph in ipairs (entryAddress) do
                 validAddress = isValidGlyph(gateType, string.gsub(glyph, "_", " "))
                 if validAddress then 
@@ -472,28 +477,34 @@ local commands = {
         end
         return returnstr
     end;
-    remove = function(...)
+    delete = function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local gateA, gateAIndex = findEntry(args[2])
-        if gateA then
-            returnstr = "Removing entry "..gateA.Name.." at index "..gateAIndex
-            table.remove(database, gateAIndex)
-            nearbyGatesList:removeEntry(gateA.Name)
-            writeToDatabaseFile()
-            if databaseList.visible then 
-                databaseList:display() 
-                nearbyGatesList:display() 
+        if args[2] then 
+            local gateA, gateAIndex = findEntry(args[2])     
+            if gateA then
+                returnstr = "Removing entry "..gateA.Name.." at index "..gateAIndex
+                table.remove(database, gateAIndex)
+                nearbyGatesList:removeEntry(gateA.Name)
+                databaseList:removeEntry(gateA.Name)
+                writeToDatabaseFile()
+                --if databaseList.visible then 
+                    databaseList:display() 
+                    nearbyGatesList:display() 
+                --end
             end
         end
         return returnstr
     end;
-    refresh = function()
+    refresh = function(...)
+        local returnstr = "Refreshed display."
         displayOutputBuffer()
         if databaseList.visible then 
             databaseList:display()
             nearbyGatesList:display()
         end
+        
+        return returnstr
     end;
     rename =  function(...)
         local args = {...}
@@ -507,6 +518,7 @@ local commands = {
             local isInNearby = nearbyGatesList:getIndexFromName(gateA.Name) 
             gateA.Name = newName
             if isInNearby then
+                returnstr = "Renamed entry in nearbylist"
                 nearbyGatesList.entries[isInNearby] = newName
                 nearbyGatesList:display()
             end
@@ -588,27 +600,33 @@ setAliases(commands.set,"s","st")
 setAliases(commands.quit, "q", "exit")
 setAliases(commands.clear, "c", "clr")
 setAliases(commands.get, "g")
-setAliases(commands.remove, "del", "delete", "rm")
+setAliases(commands.delete, "del", "remove", "rmv")
 setAliases(commands.add, "new")
 setAliases(commands.dial, "d")
+setAliases(commands.rename, "rn")
 
 function processInput(usr, inputstr)
     local timeran = "["..os.date("%H:%M", getRealTime()).."]"
     if inputstr:sub(1,1) == settings.prefix then
         local chunks = strsplit(inputstr, settings.prefix)
         for i, chunk in next, chunks do
-            local outputstring = " cmd: "..chunk
-            if i == 1 then outputstring = timeran..outputstring else outputstring = "       "..outputstring  end
-            recordToOutput(outputstring)
             local args = strsplit(chunk, " ")
-            local cmdfunction cmdfunction = commands[args[1]]
+            local cmdfunction = commands[args[1]]
+            local outputstring = " cmd: "..chunk
+            if i == 1 then 
+                outputstring = timeran..outputstring 
+            else
+                outputstring = "       "..outputstring  
+            end
+            recordToOutput(outputstring)
+            
             
             if cmdfunction then
                 args[1] = nil --removing the command name
-                local returndata = cmdfunction(table.unpack(args)) --could do returns here and deal with the output buffer, but not really necessary
-                if returndata then
+                local succ, returndata = pcall(cmdfunction, table.unpack(args)) --could do returns here and deal with the output buffer, but not really necessary
+                --if succ then
                     recordToOutput("          => "..returndata)
-                end
+                --end
             else
                 recordToOutput("          => invalid command.")
             end
@@ -629,15 +647,15 @@ local EventListeners = {
         if type(msg) == "string" then
             if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
                 local msgdata = load("return "..msg:sub(8))() --{gateType, address = {MW = ..., }, uuid = modem.address}
-                local gateType = msgdata.gateType
+                local newGateType = msgdata.gateType
                 local newAddress = msgdata.Address
                 local timeReceived = computer.uptime()
                 if msgdata.uuid then
                     lastReceived[msgdata.uuid] = lastReceived[msgdata.uuid] or timeReceived-6
                     if timeReceived - lastReceived[msgdata.uuid] > 5 then
                         lastReceived[msgdata.uuid] = timeReceived
-                        recordToOutput("Receiving address data from.."..msgdata.uuid)
-                        local existingEntry = findEntry(msgdata.uuid) or findEntry(newAddress, gateType)
+                        recordToOutput("Receiving address data from.."..msgdata.uuid.." of type "..newGateType)
+                        local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, newGateType)
                         if existingEntry then
                             local alreadyInNearby = false
                             for i=1,#nearbyGatesList.entries do
@@ -659,7 +677,7 @@ local EventListeners = {
                                 Name = msgdata.Name or msgdata.uuid;
                                 Address = newAddress;
                                 IDCs = {};
-                                Type = gateType;
+                                Type = newGateType;
                                 UUID = msgdata.uuid;
                             }
                             table.insert(database, newEntry)
