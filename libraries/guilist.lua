@@ -150,7 +150,7 @@ function List:scroll(direction)
 end
 
 function List:display()
-    if #self.entries > 0 and self.active then
+    if #self.entries > 0 then
         self.visible = true
         local startx = self.pos.x
         local starty = self.pos.y
@@ -160,7 +160,7 @@ function List:display()
         local listiterator = 0
         for i = self.displaystart, self.displaystart+math.min(#self.entries-self.displaystart, self.size.y-1) do
             if i == self.currententry then gpu.setBackground(0x878787) else gpu.setBackground(0x000000) end
-            gpu.set(startx, starty+listiterator, (i..": "..self.entries[i]):sub(1, self.size.x)) --..startx.." "..starty.." "..self.size.x.." "..self.size.y
+            gpu.set(startx, starty+listiterator, i..": "..self.entries[i]) --..startx.." "..starty.." "..self.size.x.." "..self.size.y
             listiterator = listiterator + 1
         end
         gpu.setBackground(previousBackground)

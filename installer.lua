@@ -98,8 +98,12 @@ elseif (filesystem.exists("/gds/gatecomputer.lua") and not filesystem.exists("/g
 end
 downloadFile("gds.lua","/bin/")
 if opts.a then --autorun
-    local file = io.open("/autorun.lua", "w")
-    file:write([[require("shell").execute("/bin/gds.lua")]])
+    local file = io.open("/autorun.lua", "w") --why is this breaking things ?????
+    file:write([[
+os.sleep()
+local shell = require("shell")
+shell.execute("/bin/gds.lua")
+    ]])
     file:close()
     print("Created /autorun.lua")
 end
