@@ -101,9 +101,14 @@ downloadFile("gds.lua","/bin/")
 if opts.a then --autorun
     local file = io.open("/autorun.lua", "w") --why is this breaking things ?????
     file:write([[
-os.sleep()
 local shell = require("shell")
-shell.execute("/bin/gds.lua")
+local filesystem = require("filesystem")
+
+if filesystem.exists("/bin/gds.lua") then
+    shell.execute("/bin/gds.lua")
+else
+    print("GDS is not installed.\n")
+end
     ]])
     file:close()
     print("Created /autorun.lua")
