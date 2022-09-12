@@ -710,14 +710,22 @@ local EventListeners = {
                                 returnstr = returnstr.." Updated UUID."
                             end
                             for glyphset, adrs in pairs (newAddress) do
-                                if existingEntry.Address[glyphset] then
-                                    if #adrs > #existingEntry.Address[glyphset] then
-                                        existingEntry.Address.MW = newAddress.MW
-                                        returnstr = returnstr.." Updated MW Address."
+                                if glyphset == "MW" or glyphset == "PG" or glyphset == "UN" then
+                                    if existingEntry.Address[glyphset] then
+                                        if #adrs < 10 then
+                                            if #adrs > #existingEntry.Address[glyphset] then
+                                                existingEntry.Address.MW = newAddress.MW
+                                                returnstr = returnstr.." Updated MW Address."
+                                            end
+                                        else
+                                            returnstr = returnstr .. " Failure to sync, too many glyphs: "..#adrs.."."
+                                        end
+                                    else
+                                        existingEntry[glyphset] = adrs
+                                        returnstr = returnstr.." Added "..glyphset.." Address."
                                     end
                                 else
-                                    existingEntry[glyphset] = adrs
-                                    returnstr = returnstr.." Added "..glyphset.." Address."
+                                    returnstr = returnstr.." Invalid glyph-set: "..glyphset.."."
                                 end
                             end
                             writeToDatabaseFile()
