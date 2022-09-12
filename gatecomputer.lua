@@ -195,11 +195,11 @@ local EventListeners = {
                                         until stargate.getGateStatus() == "idle"
                                     end
                                     if i == #newAddress then
+                                        repeat 
+                                            os.sleep()
+                                        until stargate.getGateStatus() == "idle"
                                         if speedDial then
                                             print("Pressing big red button.")
-                                            repeat 
-                                                os.sleep()
-                                            until stargate.getGateStatus() == "idle"
                                             local _, result, errormsg = dhd.pressBRB()
                                             if result~="dhd_engage" then 
                                                 print("BRB = "..result)

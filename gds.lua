@@ -34,6 +34,9 @@ elseif opts.d then --delete
         end
     end
 end
+if opts.a then --autostart
+
+end
 if filesystem.exists("/gds/clientinterface.lua") then
     shell.execute("/gds/clientinterface.lua")
 elseif filesystem.exists("/gds/gatecomputer.lua") then

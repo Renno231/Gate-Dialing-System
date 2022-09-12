@@ -496,6 +496,12 @@ local commands = {
         end
         return returnstr
     end;
+    move = function(...)
+        local args = {...}
+        local returnstr = "Insufficient arguments."
+
+        return returnstr
+    end;
     refresh = function(...)
         local returnstr = "Refreshed display."
         displayOutputBuffer()
@@ -535,7 +541,8 @@ local commands = {
         local cmdPayload = 'gds{command="dial",args={fast='..tostring(settings.speedDial)..', Address='
         local gateA, gateB
         if args[2] and args[3] then
-            gateA, gateB = findEntry(args[2]), findEntry(args[3])
+            gateA = findEntry(args[2])
+            gateB = findEntry(args[3])
         elseif args[2] and args[3] == nil then
             gateA = findEntry(nearbyGatesList.currententry or 1)
             gateB = findEntry(args[2])
@@ -543,7 +550,6 @@ local commands = {
             if nearbyGatesList.currententry and databaseList.currententry then
                 gateA = findEntry(nearbyGatesList.currententry)
                 gateB = findEntry(databaseList.currententry)
-
             end
         end
         if gateA and gateB then
