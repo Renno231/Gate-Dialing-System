@@ -255,8 +255,10 @@ historyList = listapi.List.new("History", gateOperator.size.x*0.8,   gateOperato
 
 local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, nearbyGatesList.pos.y + 5, 1, 1, "Dial", function() 
     if databaseList.currententry and nearbyGatesList.currententry then
-        local gateA, gateB = nearbyGatesList.entries[nearbyGatesList.currententry], databaseList.entries[databaseList.currententry]
-        processInput(lastUser, settings.prefix.."dial "..gateA.." "..gateB) 
+        local gateA = nearbyGatesList.entries[nearbyGatesList.currententry]
+        if gateA then
+            processInput(lastUser, settings.prefix.."dial "..gateA.." "..databaseList.currententry) 
+        end
     end
 end)
 
@@ -418,7 +420,7 @@ local commands = {
             local foundEntry = findEntry(args[3])
             local entryAddress = {args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12],}
             local validAddress = true
-            local gateType = args[4]
+            local gateType = args[4]:upper()
             for i, glyph in ipairs (entryAddress) do
                 validAddress = isValidGlyph(gateType, string.gsub(glyph, "_", " "))
                 if validAddress then 
