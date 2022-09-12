@@ -338,9 +338,10 @@ end
 
 --command processing 
 local commands = {
-    clear = function() 
+    clear = function(...) 
         outputBuffer = {}
         displayOutputBuffer()
+        --return "Cleared output."
     end;
     set = function(...)
         local args = {...}
@@ -499,7 +500,16 @@ local commands = {
     move = function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
+        if args[2] and args[3] then
+            local gateA, gateAIndex = findEntry(args[2])
+            local gateB, gateBIndex = findEntry(args[3])
+            if gateAIndex and gateBIndex then
 
+            elseif gateAIndex and gateBIndex == nil then
+
+            end
+        end
+        --writeToDatabaseFile()
         return returnstr
     end;
     refresh = function(...)
@@ -630,9 +640,9 @@ function processInput(usr, inputstr)
             if cmdfunction then
                 args[1] = nil --removing the command name
                 local succ, returndata = pcall(cmdfunction, table.unpack(args)) --could do returns here and deal with the output buffer, but not really necessary
-                --if succ then
+                if returndata then
                     recordToOutput("          => "..returndata)
-                --end
+                end
             else
                 recordToOutput("          => invalid command.")
             end
@@ -674,7 +684,24 @@ local EventListeners = {
                                     existingEntry.UUID = msgdata.uuid
                                     returnstr = returnstr.." Updated UUID."
                                 end
-                                existingEntry.Address.MW, existingEntry.Address.PG, existingEntry.Address.UN = newAddress.MW, newAddress.PG, newAddress.UN
+                                if newAddress.MW and existingEntry.MW then
+                                    if #newAddress.MW > #existingEntry.Address.MW then
+                                        existingEntry.Address.MW = newAddress.MW
+                                        returnstr = returnstr.." Updated MW Address."
+                                    end
+                                end
+                                if newAddress.UN and existingEntry.UN then
+                                    if #newAddress.UN > #existingEntry.Address.UN then
+                                        existingEntry.Address.UN = newAddress.UN
+                                        returnstr = returnstr.." Updated UN Address."
+                                    end
+                                end
+                                if newAddress.PG and existingEntry.PG then
+                                    if #newAddress.PG > #existingEntry.Address.PG then
+                                        existingEntry.Address.PG = newAddress.PG
+                                        returnstr = returnstr.." Updated PG Address."
+                                    end
+                                end
                                 writeToDatabaseFile()
                                 recordToOutput(returnstr)
                             end

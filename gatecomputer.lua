@@ -125,6 +125,7 @@ local EventListeners = {
                 local command = msgdata.command
                 local args = msgdata.args
                 local user = msgdata.user
+                local userprocessKey = command..sender --useful for tracking actions by a specific user instead of total interaction by a specific user
                 local canProcess = true
                 if isPrivate then
                     if type(user) == "table" then
@@ -141,62 +142,105 @@ local EventListeners = {
                     print("Processing command: "..command)
                     --os.sleep(0.1) --seems like its needed?
                     if command == "dial" then
+                        lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-2
+                        if currentTime - lastReceived[userprocessKey] < 1 then
+                            return
+                        else
+                            lastReceived[userprocessKey] = currentTime
+                        end
                         if threads.dialing then threads.dialing:kill() end --could add a check to see if the partial address dialed matches the current one and continue from there
                         threads.dialing = thread.create(function() 
                             -- put this in a new thread
                             print("Attempting to dial address...\nCurrent gate type is "..gateType)
                             local newAddress = args.Address[gateType]
+                            local newAddressStr = "["..table.concat(newAddress, ", ").."]"
                             if not newAddress then
                                 print("Invalid address")
                                 os.exit()
                             else
-                                print("Found address: "..table.concat(newAddress, ", "))
+                                print("Found address: "..newAddressStr)
                             end
                             local lastGlyph = newAddress[#newAddress]
                             if lastGlyph ~= "Point of Origin" and lastGlyph~="Glyph 17" and lastGlyph~="Subido" then
-                                table.insert(newAddress, (gateType=="MW" and "Point of Origin") or (gateType=="UN" and "Glyph 17") or (gateType=="PG" and "Subido"))
+                                lastGlyph = (gateType=="MW" and "Point of Origin") or (gateType=="UN" and "Glyph 17") or (gateType=="PG" and "Subido")
+                                table.insert(newAddress, lastGlyph)
                                 print("Address missing POI, adding POI...")
                             end 
                             print("Checking if address exists...")
                             local addressCheck = stargate.getEnergyRequiredToDial(table.unpack(newAddress))
                             local gateStatus = stargate.getGateStatus()
-                            local glyphStart = 1
+                            local glyphStart, hasEngagedGate = 1, false
                             local currentDialedAddress = stargate.dialedAddress
-                            if currentDialedAddress~="[]" then
-                                local currentDialedGlyphs = strsplit(stargate.dialedAddress:sub(2, currentDialedAddress:len()-1), ", ")
-                                for i, glyph in next, currentDialedGlyphs do
-                                    if newAddress[i] == glyph then
-                                        glyphStart = i
+                            local totalGlyphs = #newAddress
+                            if totalGlyphs > 7 and type(addressCheck) == "table" then --see if it can be done with less glyphs
+                                for check = 1, totalGlyphs-7 do
+                                    local newCheckAddress = {}
+                                    for i=1, totalGlyphs-2 do
+                                        table.insert(newCheckAddress, newAddress[i])
+                                    end
+                                    table.insert(newCheckAddress, lastGlyph) --poi
+                                    print("Checking address: "..table.concat(newCheckAddress,", "))
+                                    local newCheck = stargate.getEnergyRequiredToDial(table.unpack(newCheckAddress))
+                                    if type(newCheck) == "table" then
+                                        newAddress = newCheckAddress
+                                        totalGlyphs = #newAddress
+                                        print("Found shorter address:"..#newAddress)
                                     else
-                                        glyphStart = 1
+                                        print("Shortest address is "..totalGlyphs.." glyphs.")
                                         break
                                     end
                                 end
                             end
-                            if gateStatus == "open" then 
-                                stargate.disengageGate()
-                                print("Resetting address...")
-                            elseif gateStatus == "dialing" and glyphStart==1 then
-                                stargate.abortDialing()
-                                print("Aborting dialing...")
+                            if currentDialedAddress~="[]" then --check if currently dialed glyphs match the new address
+                                if newAddressStr:sub(1, currentDialedAddress:len()-1) == string.gsub(currentDialedAddress,"]","") then
+                                    print("Partial address match")
+                                    local glyphsSplit = strsplit(currentDialedAddress:sub(2, currentDialedAddress:len()-1), ",")
+                                    for i,v in ipairs (glyphsSplit) do
+                                        if v:sub(1,1) == " " then v = v:sub(2) end
+                                        print("split",i,"|"..v.."|")
+                                        if newAddress[i] == v then
+                                            glyphStart = i + 1
+                                        else
+                                            glyphStart = 1
+                                            break
+                                        end
+                                    end
+                                end
+                                print("Glyph Start:", glyphStart)
+                                if glyphStart > #newAddress then
+                                    hasEngagedGate = stargate.engageGate()
+                                    print("Engaging stargate: "..tostring(hasEngagedGate))
+                                end
                             end
-                            if gateStatus~="idle" then
-                                print("Waiting for gate to finish actions...")
-                                repeat 
-                                    os.sleep()
-                                until stargate.getGateStatus() == "idle"
+                            print("Gate Status: "..gateStatus)
+                            if not hasEngagedGate then
+                                if gateStatus == "open" then 
+                                    stargate.disengageGate()
+                                    print("Resetting address...")
+                                elseif currentDialedAddress~="[]" and glyphStart==1 then --gateStatus == "dialing" and 
+                                    stargate.abortDialing()
+                                    print("Aborting dialing...")
+                                    os.sleep(2.5)
+                                end
+                                if gateStatus~="idle" then
+                                    print("Waiting for gate to finish actions...")
+                                    repeat 
+                                        os.sleep()
+                                    until stargate.getGateStatus() == "idle"
+                                end
                             end
-                            if type(addressCheck)=="table" then --check if has energy, if not then inform controller
+                            print("Glyph starting index = "..tostring(glyphStart))
+                            if type(addressCheck)=="table" and stargate.getGateStatus() == "idle" then
                                 local speedDial = (args.fast or false) and canSpeedDial
                                 local successfullyDialed, dialStart = false, computer.uptime()
                                 print("Valid address.")
                                 print("canSpeedDial = "..tostring(canSpeedDial)..". args.fast = "..tostring(args.fast))
                                 for i=glyphStart, #newAddress do
-                                    print("> Glyph: "..newAddress[i])
+                                    print("> Glyph "..i..": "..newAddress[i])
                                     if speedDial then
                                         if gateType~="MW" then
                                             repeat 
-                                                os.sleep()
+                                                os.sleep(0.5)
                                             until stargate.getGateStatus() == "idle"
                                         end
                                         local _, result, errormsg = dhd.pressButton(newAddress[i])
@@ -204,26 +248,31 @@ local EventListeners = {
                                             if result == "dhd_not_connected" then
                                                 computer.pushSignal("stargate_failed","",true,result)
                                             end
-                                            os.exit() -- exit dialing thread
+                                            print("DHD: "..result,"Err: "..errormsg)
+                                            return -- exit dialing thread
                                         end
                                     else
-                                        stargate.engageSymbol(newAddress[i])
                                         repeat 
-                                            os.sleep()
+                                            os.sleep(0.5)
                                         until stargate.getGateStatus() == "idle"
+                                        stargate.engageSymbol(newAddress[i])
                                     end
                                     if i == #newAddress then
-                                        repeat 
-                                            os.sleep()
-                                        until stargate.getGateStatus() == "idle"
                                         if speedDial and gateType == "MW" then
+                                            repeat 
+                                                os.sleep()
+                                            until stargate.getGateStatus() == "idle"
                                             print("Pressing big red button.")
                                             local _, result, errormsg = dhd.pressBRB()
                                             if result~="dhd_engage" then 
                                                 print("BRB = "..result)
                                             end
                                         else
-                                            print("Stargate engaged: "..tostring(stargate.engageGate()))
+                                            repeat 
+                                                currentDialedAddress = stargate.dialedAddress
+                                                os.sleep()
+                                            until string.gsub(currentDialedAddress:sub(currentDialedAddress:len()-lastGlyph:len()), "]", "") == lastGlyph
+                                            print("Stargate engaged: "..tostring(stargate.engageGate()=="stargate_engage"))
                                         end
                                     end
                                     os.sleep()
