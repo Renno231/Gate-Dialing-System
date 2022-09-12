@@ -170,7 +170,7 @@ local function findEntry(selector, addresstype) --address type is optional and o
     elseif type(selector) == "string" then
         selector = string.gsub(selector, "_", " ")
         for i, entry in ipairs (database) do
-            if entry.Name:sub(1, selector:len()):lower() == selector:lower() or entry.uuid == selector then
+            if (entry.Name:sub(1, selector:len()):lower() == selector:lower() and entry.Name:len()~=selector:len()) or entry.uuid == selector then
                 foundEntry = entry
                 entryIndex = i
                 break
@@ -497,19 +497,50 @@ local commands = {
         end
         return returnstr
     end;
-    move = function(...)
+    swap = function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
         if args[2] and args[3] then
             local gateA, gateAIndex = findEntry(args[2])
             local gateB, gateBIndex = findEntry(args[3])
             if gateAIndex and gateBIndex then
-
-            elseif gateAIndex and gateBIndex == nil then
-
+                database[gateBIndex], databaseList.entries[gateBIndex] = gateA, gateA.Name
+                database[gateAIndex], databaseList.entries[gateAIndex] = gateB, gateB.Name
+                if gateAIndex == databaseList.currententry then 
+                    databaseList.currententry = gateBIndex 
+                end
+                if databaseList.visible then
+                    databaseList:display()
+                end
+                writeToDatabaseFile()
+                returnstr = "Swapped "..gateA.Name.." with "..gateB.Name
             end
         end
-        --writeToDatabaseFile()
+        return returnstr
+    end;
+    move = function(...)
+        local args = {...}
+        local returnstr = "Insufficient arguments."
+        if args[2] and args[3] then
+            local gateA, gateAIndex = findEntry(args[2])
+            local newIndex = tonumber(args[3])
+            if type(newIndex) == "number" then 
+                newIndex = math.min(math.max(tonumber(args[3]), 1),  #database)
+            end
+            if gateAIndex and newIndex and gateAIndex ~=newIndex then
+                table.remove(database, gateAIndex)
+                table.insert(database, newIndex, gateA)
+                if gateAIndex == databaseList.currententry then 
+                    databaseList.currententry = newIndex 
+                elseif newIndex == databaseList.currententry then
+                    databaseList.currententry =  databaseList.currententry + (newIndex < gateAIndex and 1 or -1)
+                end
+                databaseList:removeEntry(gateAIndex)
+                databaseList:addEntry(gateA.Name, newIndex) --addEntry(newstr, index, refresh)
+                writeToDatabaseFile()
+                returnstr = "Moved "..gateA.Name.." to "..newIndex
+            end
+        end
         return returnstr
     end;
     refresh = function(...)
@@ -635,8 +666,6 @@ function processInput(usr, inputstr)
                 outputstring = "       "..outputstring  
             end
             recordToOutput(outputstring)
-            
-            
             if cmdfunction then
                 args[1] = nil --removing the command name
                 local succ, returndata = pcall(cmdfunction, table.unpack(args)) --could do returns here and deal with the output buffer, but not really necessary
@@ -684,7 +713,7 @@ local EventListeners = {
                                     existingEntry.UUID = msgdata.uuid
                                     returnstr = returnstr.." Updated UUID."
                                 end
-                                if newAddress.MW and existingEntry.MW then
+                                if newAddress.MW and existingEntry.MW then --could be condensed into a for loop
                                     if #newAddress.MW > #existingEntry.Address.MW then
                                         existingEntry.Address.MW = newAddress.MW
                                         returnstr = returnstr.." Updated MW Address."
