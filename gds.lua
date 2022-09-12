@@ -11,7 +11,7 @@ if opts.u then --update
     if gdsType then
         for i, address in ipairs (gdsFiles) do
             if filesystem.exists(address) then
-                print("Removed "..address..": "..filesystem.remove(address))
+                print("Removed "..address..": "..tostring(filesystem.remove(address)))
             end
         end
         print(shell.execute("wget -f https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/installer.lua"))
