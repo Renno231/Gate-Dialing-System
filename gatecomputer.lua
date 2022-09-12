@@ -153,9 +153,10 @@ local EventListeners = {
                             -- put this in a new thread
                             print("Attempting to dial address...\nCurrent gate type is "..gateType)
                             local newAddress = args.Address[gateType]
-                            local newAddressStr = "["..table.concat(newAddress, ", ").."]"
+                            local newAddressStr = serialization.serialize(newAddress) --should be able to use table.concat
+                            newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
                             if not newAddress then
-                                print("Invalid address")
+                                print("Invalid address: "..newAddressStr)
                                 os.exit()
                             else
                                 print("Found address: "..newAddressStr)
@@ -185,9 +186,9 @@ local EventListeners = {
                                         newAddress = newCheckAddress
                                         totalGlyphs = #newAddress
                                         print("Found shorter address:"..#newAddress)
-                                    else
-                                        print("Shortest address is "..totalGlyphs.." glyphs.")
-                                        break
+                                    --else
+                                    --    print("Shortest address is "..totalGlyphs.." glyphs.")
+                                    --    break
                                     end
                                 end
                             end
@@ -235,7 +236,7 @@ local EventListeners = {
                                 local successfullyDialed, dialStart = false, computer.uptime()
                                 print("Valid address.")
                                 print("canSpeedDial = "..tostring(canSpeedDial)..". args.fast = "..tostring(args.fast))
-                                for i=glyphStart, #newAddress do
+                                for i=glyphStart, totalGlyphs do
                                     print("> Glyph "..i..": "..newAddress[i])
                                     if speedDial then
                                         if gateType~="MW" then
@@ -257,7 +258,7 @@ local EventListeners = {
                                         until stargate.getGateStatus() == "idle"
                                         stargate.engageSymbol(newAddress[i])
                                     end
-                                    if i == #newAddress then
+                                    if i == totalGlyphs then
                                         if speedDial and gateType == "MW" then
                                             repeat 
                                                 os.sleep()
@@ -271,7 +272,7 @@ local EventListeners = {
                                             repeat 
                                                 currentDialedAddress = stargate.dialedAddress
                                                 os.sleep()
-                                            until string.gsub(currentDialedAddress:sub(currentDialedAddress:len()-lastGlyph:len()), "]", "") == lastGlyph
+                                            until string.gsub(currentDialedAddress:sub(currentDialedAddress:len()-lastGlyph:len()), "]", "") == lastGlyph and stargate.getGateStatus() == "idle"
                                             print("Stargate engaged: "..tostring(stargate.engageGate()=="stargate_engage"))
                                         end
                                     end
