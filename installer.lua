@@ -42,12 +42,16 @@ local function downloadFile(filePath, directory)
     local fileName = strsplit(filePath,"/")
     local success, err = pcall(function()
         fileName = fileName[#fileName]
+        local absolutePath = (directory or "")..fileName
         if type(directory)=="string" and directory~="" then
             if not filesystem.isDirectory(directory) then
                 filesystem.makeDirectory(directory)
             end
         end
-        local file, err = io.open((directory or "")..fileName, "w")
+        if filesystem.exists(absolutePath) then
+            filesystem.remove(absolutePath)
+        end
+        local file, err = io.open(absolutePath, "w")
         if file == nil then error(err) end
         for chunk in response do
             file:write(chunk)
