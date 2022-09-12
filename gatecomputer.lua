@@ -181,6 +181,11 @@ local EventListeners = {
                                 for i=1, #newAddress do
                                     print("> Glyph: "..newAddress[i])
                                     if speedDial then
+                                        if gateType~="MW" then
+                                            repeat 
+                                                os.sleep()
+                                            until stargate.getGateStatus() == "idle"
+                                        end
                                         local _, result, errormsg = dhd.pressButton(newAddress[i])
                                         if result ~= "dhd_pressed" then
                                             if result == "dhd_not_connected" then
