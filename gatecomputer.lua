@@ -160,10 +160,23 @@ local EventListeners = {
                             print("Checking if address exists...")
                             local addressCheck = stargate.getEnergyRequiredToDial(table.unpack(newAddress))
                             local gateStatus = stargate.getGateStatus()
+                            local glyphStart = 1
+                            local currentDialedAddress = stargate.dialedAddress
+                            if currentDialedAddress~="[]" then
+                                local currentDialedGlyphs = strsplit(stargate.dialedAddress:sub(2, currentDialedAddress:len()-1), ", ")
+                                for i, glyph in next, currentDialedGlyphs do
+                                    if newAddress[i] == glyph then
+                                        glyphStart = i
+                                    else
+                                        glyphStart = 1
+                                        break
+                                    end
+                                end
+                            end
                             if gateStatus == "open" then 
                                 stargate.disengageGate()
                                 print("Resetting address...")
-                            elseif gateStatus == "dialing" then
+                            elseif gateStatus == "dialing" and glyphStart==1 then
                                 stargate.abortDialing()
                                 print("Aborting dialing...")
                             end
@@ -178,7 +191,7 @@ local EventListeners = {
                                 local successfullyDialed, dialStart = false, computer.uptime()
                                 print("Valid address.")
                                 print("canSpeedDial = "..tostring(canSpeedDial)..". args.fast = "..tostring(args.fast))
-                                for i=1, #newAddress do
+                                for i=glyphStart, #newAddress do
                                     print("> Glyph: "..newAddress[i])
                                     if speedDial then
                                         if gateType~="MW" then
@@ -203,14 +216,14 @@ local EventListeners = {
                                         repeat 
                                             os.sleep()
                                         until stargate.getGateStatus() == "idle"
-                                        if speedDial then
+                                        if speedDial and gateType == "MW" then
                                             print("Pressing big red button.")
                                             local _, result, errormsg = dhd.pressBRB()
                                             if result~="dhd_engage" then 
                                                 print("BRB = "..result)
                                             end
                                         else
-                                            stargate.engageGate()
+                                            print("Stargate engaged: "..tostring(stargate.engageGate()))
                                         end
                                     end
                                     os.sleep()
