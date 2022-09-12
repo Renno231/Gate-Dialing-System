@@ -702,29 +702,22 @@ local EventListeners = {
                     if timeReceived - lastReceived[msgdata.uuid] > 5 then
                         lastReceived[msgdata.uuid] = timeReceived
                         recordToOutput("Receiving address data from.."..msgdata.uuid.." of type "..newGateType)
-                        local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, newGateType)
+                        local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, newGateType) --add additional checks?
                         if existingEntry then
                             local returnstr = "Found existing entry "..existingEntry.Name.." from scan."
                             if existingEntry.UUID ~= msgdata.uuid then
                                 existingEntry.UUID = msgdata.uuid
                                 returnstr = returnstr.." Updated UUID."
                             end
-                            if newAddress.MW and existingEntry.MW then --could be condensed into a for loop
-                                if #newAddress.MW > #existingEntry.Address.MW then
-                                    existingEntry.Address.MW = newAddress.MW
-                                    returnstr = returnstr.." Updated MW Address."
-                                end
-                            end
-                            if newAddress.UN and existingEntry.UN then
-                                if #newAddress.UN > #existingEntry.Address.UN then
-                                    existingEntry.Address.UN = newAddress.UN
-                                    returnstr = returnstr.." Updated UN Address."
-                                end
-                            end
-                            if newAddress.PG and existingEntry.PG then
-                                if #newAddress.PG > #existingEntry.Address.PG then
-                                    existingEntry.Address.PG = newAddress.PG
-                                    returnstr = returnstr.." Updated PG Address."
+                            for glyphset, adrs in pairs (newAddress) do
+                                if existingEntry.Address[glyphset] then
+                                    if #adrs > #existingEntry.Address[glyphset] then
+                                        existingEntry.Address.MW = newAddress.MW
+                                        returnstr = returnstr.." Updated MW Address."
+                                    end
+                                else
+                                    existingEntry[glyphset] = adrs
+                                    returnstr = returnstr.." Added "..glyphset.." Address."
                                 end
                             end
                             writeToDatabaseFile()
