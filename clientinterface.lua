@@ -257,7 +257,7 @@ local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, nearbyGatesList.po
     if databaseList.currententry and nearbyGatesList.currententry then
         local gateA = nearbyGatesList.entries[nearbyGatesList.currententry]
         if gateA then
-            processInput(lastUser, settings.prefix.."dial "..gateA.." "..databaseList.currententry) 
+            processInput(lastUser, settings.prefix.."dial "..string.gsub(gateA," ","_").." "..databaseList.currententry) 
         end
     end
 end)
