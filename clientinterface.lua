@@ -74,7 +74,7 @@ local function send(address, port, msg)
     os.sleep(0.05)
 end
 
-local lastBroadcasted = 10
+local lastBroadcasted = 0
 local function broadcast(port, msg)
     modem.broadcast(port, tostring(msg))
     lastBroadcasted = computer.uptime()
@@ -197,7 +197,7 @@ local function isValidGlyph(set, glyph)
         if set == "MW" then
             set = GlyphsMW
         elseif set == "PG" then
-            set = Glyphs.PG
+            set = GlyphsPG
         end
     end
     local isValid = false
@@ -433,12 +433,13 @@ local commands = {
                 end
             end
             if #entryAddress > 5 and validAddress then --add POI check and addition if missing
-                local lastGlyph = entryAddress[#entryAddress]
+                --[[local lastGlyph = entryAddress[#entryAddress]
                 if lastGlyph ~= "Point of Origin" and lastGlyph~="Glyph 17" and lastGlyph~="Subido" then
                     table.insert(entryAddress, (gateType=="MW" and "Point of Origin") or (gateType=="UN" and "Glyph 17") or (gateType=="PG" and "Subido"))
-                end 
+                end ]]
                 if foundEntry then
                     foundEntry.Address[gateType] = entryAddress
+                    returnstr = "Successfully updated "..foundEntry.Name.." "..gateType.." address."
                 else
                     local newEntry = {
                         Name = args[3];
@@ -703,38 +704,31 @@ local EventListeners = {
                         recordToOutput("Receiving address data from.."..msgdata.uuid.." of type "..newGateType)
                         local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, newGateType)
                         if existingEntry then
-                            local alreadyInNearby = false
-                            for i=1,#nearbyGatesList.entries do
-                                alreadyInNearby = existingEntry.Name == nearbyGatesList.entries[i]
-                                if alreadyInNearby then break end
+                            local returnstr = "Found existing entry "..existingEntry.Name.." from scan."
+                            if existingEntry.UUID ~= msgdata.uuid then
+                                existingEntry.UUID = msgdata.uuid
+                                returnstr = returnstr.." Updated UUID."
                             end
-                            if not alreadyInNearby then
-                                local returnstr = "Found existing entry "..existingEntry.Name.." from scan."
-                                if existingEntry.UUID ~= msgdata.uuid then
-                                    existingEntry.UUID = msgdata.uuid
-                                    returnstr = returnstr.." Updated UUID."
+                            if newAddress.MW and existingEntry.MW then --could be condensed into a for loop
+                                if #newAddress.MW > #existingEntry.Address.MW then
+                                    existingEntry.Address.MW = newAddress.MW
+                                    returnstr = returnstr.." Updated MW Address."
                                 end
-                                if newAddress.MW and existingEntry.MW then --could be condensed into a for loop
-                                    if #newAddress.MW > #existingEntry.Address.MW then
-                                        existingEntry.Address.MW = newAddress.MW
-                                        returnstr = returnstr.." Updated MW Address."
-                                    end
-                                end
-                                if newAddress.UN and existingEntry.UN then
-                                    if #newAddress.UN > #existingEntry.Address.UN then
-                                        existingEntry.Address.UN = newAddress.UN
-                                        returnstr = returnstr.." Updated UN Address."
-                                    end
-                                end
-                                if newAddress.PG and existingEntry.PG then
-                                    if #newAddress.PG > #existingEntry.Address.PG then
-                                        existingEntry.Address.PG = newAddress.PG
-                                        returnstr = returnstr.." Updated PG Address."
-                                    end
-                                end
-                                writeToDatabaseFile()
-                                recordToOutput(returnstr)
                             end
+                            if newAddress.UN and existingEntry.UN then
+                                if #newAddress.UN > #existingEntry.Address.UN then
+                                    existingEntry.Address.UN = newAddress.UN
+                                    returnstr = returnstr.." Updated UN Address."
+                                end
+                            end
+                            if newAddress.PG and existingEntry.PG then
+                                if #newAddress.PG > #existingEntry.Address.PG then
+                                    existingEntry.Address.PG = newAddress.PG
+                                    returnstr = returnstr.." Updated PG Address."
+                                end
+                            end
+                            writeToDatabaseFile()
+                            recordToOutput(returnstr)
                         else
                             local newEntry = {
                                 Name = msgdata.Name or msgdata.uuid;
@@ -749,7 +743,9 @@ local EventListeners = {
                             existingEntry = newEntry
                             recordToOutput("Added new entry "..newEntry.Name.." from scan.")
                         end
-                        nearbyGatesList:addEntry(existingEntry.Name)
+                        if nearbyGatesList:getIndexFromName(existingEntry.Name)==nil then 
+                            nearbyGatesList:addEntry(existingEntry.Name)
+                        end
                         if gateOperator.currenttab == 1 then
                             gateOperator:write(databaseList.pos.x-3, databaseList.pos.y-2, "|Database: "..#databaseList.entries)
                             gateOperator:write(nearbyGatesList.pos.x-3, nearbyGatesList.pos.y-2, "|Nearby: "..#nearbyGatesList.entries)
