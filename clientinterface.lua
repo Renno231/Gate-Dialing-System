@@ -253,11 +253,11 @@ gateOperator:display()
 local databaseTab = gateOperator:addTab("Database", nil, nil)
 local historyTab = gateOperator:addTab("History", gateOperator.size.x, nil, 1)
 
-databaseList = listapi.List.new("Database", gateOperator.size.x*0.8,  10, gateOperator.pos.x+3, gateOperator.pos.y+2)
-nearbyGatesList = listapi.List.new("Nearby", gateOperator.size.x*0.8,  5, gateOperator.pos.x+3, gateOperator.pos.y + databaseList.size.y + 4)
+databaseList = listapi.List.new("Database", gateOperator.size.x*0.8,  gateOperator.size.y*(10/23), gateOperator.pos.x+3, gateOperator.pos.y+2)
+nearbyGatesList = listapi.List.new("Nearby", gateOperator.size.x*0.8,  gateOperator.size.y*(5/23), gateOperator.pos.x+3, gateOperator.pos.y + databaseList.size.y + 4)
 historyList = listapi.List.new("History", gateOperator.size.x*0.8,   gateOperator.size.y*0.9, gateOperator.pos.x+1, gateOperator.pos.y+1)
 
-local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, nearbyGatesList.pos.y + 5, 1, 1, "Dial", function() 
+local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, gateOperator.pos.x + gateOperator.size.y - 3, 1, 1, "Dial", function() 
     if databaseList.currententry and nearbyGatesList.currententry then
         local gateA = nearbyGatesList.entries[nearbyGatesList.currententry]
         if gateA then
@@ -266,7 +266,7 @@ local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, nearbyGatesList.po
     end
 end)
 
-local scanNearbyButton = buttonapi.Button.new(dialButton.xPos+7, nearbyGatesList.pos.y + 5, 1, 1, "Scan")
+local scanNearbyButton = buttonapi.Button.new(dialButton.xPos+7, dialButton.yPos, 1, 1, "Scan")
 scanNearbyButton.func = function() 
     scanNearbyButton.disabled = true
     recordToOutput("Scanning for nearby gates in range "..settings.modemRange..".")
@@ -277,7 +277,7 @@ scanNearbyButton.func = function()
     --button:hide() event.timer(0.25, function() button:display() end)
 end
 
-local closeGateButton = buttonapi.Button.new(scanNearbyButton.xPos+7, nearbyGatesList.pos.y + 5, 1, 1, "Close")
+local closeGateButton = buttonapi.Button.new(scanNearbyButton.xPos+7, dialButton.yPos, 1, 1, "Close")
 --function attached later on in code
 
 databaseTab.func = function() 
@@ -595,7 +595,7 @@ local commands = {
     dial = function(...) --need to add the 4th argument as a timer to close the gate, -1 signifies as long as possible, otherwise its in seconds default = 30
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local cmdPayload = 'gds{command="dial",args={fast='..tostring(settings.speedDial)..', Address='
+        local cmdPayload = 'gds{command="dial",args={fast='..tostring(settings.speedDial)..', user = {name="'..tostring(lastUser)..'"}, Address='
         local gateA, gateB
         if args[2] and args[3] then
             gateA = findEntry(args[2])
@@ -627,7 +627,7 @@ local commands = {
         local returnstr = "Insufficient arguments."
         local gateA = findEntry(args[2]) or lastEntry -- or findEntry(nearbyGatesList.currententry) or findEntry(databaseList.currententry)
         if gateA then
-            threads.send= thread.create(send, gateA.UUID, settings.networkPort, 'gds{command="close"}')
+            threads.send= thread.create(send, gateA.UUID, settings.networkPort, 'gds{command="close", user = {name = "'..tostring(lastUser)..'"}}')
             returnstr = "Closing gate "..gateA.Name
             lastEntry = gateA
         else
@@ -645,7 +645,7 @@ local commands = {
     end;
     sync = function(...)
         local args = {...}
-        local returnstr = "Not yet implimented."--"Insufficient arguments."
+        local returnstr = "Insufficient arguments."
         --for address or database syncing
         return returnstr
     end;
