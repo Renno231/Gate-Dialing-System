@@ -71,7 +71,11 @@ local threads = {} --threads.example = thread.create(function() end); threads.ex
 
 local function send(address, port, msg)
     modem.send(address, port, tostring(msg))
-    os.sleep(0.05)
+    --os.sleep(0.05)
+end
+
+local function gdssend(address, port, msg, cmdprefix)
+    modem.send(address, port, "gds"..(cmdprefix or "")..serialization.serialize(msg))
 end
 
 local lastBroadcasted = 0
@@ -394,14 +398,12 @@ local commands = {
         local args = {...}
         local returnstr = "Insufficient arguments."
         --for i,a in next, args do recordToOutput(i..":"..type(a).." = "..tostring(a)) end
-        if args[2] == "entries" then
-            if args[3] == "count" then
-                returnstr = "Total addresses = "..#databaseList.entries
-            else
-                returnstr = "'"..args[3].."' is not a valid sub parameter for '"..args[2].. "'"
+        if args[2] == "entries" and args[3] == "count" then
+            if args[3] then
+                returnstr = args[3] == "count" and "Total entries = "..#databaseList.entries or "'"..tostring(args[3]).."' is not a valid argument."
             end
         elseif args[2] == "entry" then
-            if type(tonumber(args[3])) == "number" then
+            if tonumber(args[3]) then
                 args[3] = tonumber(args[3])
                 if args[3] > 0 and args[3] <= #databaseList.entries then
                     returnstr = "Entry "..args[3].." = "..databaseList.entries[args[3]] --#database[args[3]].Name 
@@ -409,7 +411,7 @@ local commands = {
                     returnstr = "Index out of bounds."
                 end
             else
-                returnstr = "sub parameter of '"..args[2].."' must be of the type 'number'"
+                returnstr = "Argument must be of type 'number'."
             end
         elseif args[2] == "port" or args[2] == "channel" then
             returnstr = "Current network port is "..settings.networkPort
@@ -421,8 +423,8 @@ local commands = {
             returnstr = "Unused memory: "..tostring(math.floor((computer.freeMemory()/computer.totalMemory())*100)).."%"
         elseif args[2] == "radius" or args[2] == "range" then
             returnstr = "Current modem range is "..settings.modemRange
-        elseif #args == 2 then
-            returnstr = "'"..args[2].."' is an invalid value to get."
+        elseif args[2] then
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         return returnstr
     end;
@@ -590,7 +592,7 @@ local commands = {
         end
         return returnstr
     end;
-    dial = function(...)
+    dial = function(...) --need to add the 4th argument as a timer to close the gate, -1 signifies as long as possible, otherwise its in seconds default = 30
         local args = {...}
         local returnstr = "Insufficient arguments."
         local cmdPayload = 'gds{command="dial",args={fast='..tostring(settings.speedDial)..', Address='
