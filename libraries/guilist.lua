@@ -42,7 +42,7 @@ function List:addEntry(newstr, index, refresh)
             added = true
         end
     end
-    if refresh==nil or refresh == true then
+    if (refresh==nil or refresh == true) and self.active then
         self:display()
     end
     return added
@@ -72,6 +72,7 @@ function List:removeEntry(selector)
 end
 
 function List:getIndexFromName(name)
+    if name == nil then return end
     local foundIndex = nil
     name = name:lower()
     for i, entry in ipairs (self.entries) do
