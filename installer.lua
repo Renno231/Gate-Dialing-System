@@ -10,17 +10,19 @@ local term = require("term")
 local internet = nil
 local hasInternet = component.isAvailable("internet")
 local BranchURL = "https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/"
+local gdsFiles = {"/bin/gds.lua", "/gds/gatecomputer.lua","/lib/clientinterface.lua","/lib/guilist.lua","/lib/guiwindow.lua","/lib/guibutton.lua","/lib/guitextbox.lua"}
+
 if hasInternet then 
     internet = require("internet") 
 end
 
 local args, opts = shell.parse(...)
 if not hasInternet then
-    io.stderr:write("No internet connection present. Insert an internet card to install.\n")
+    print("Installation requires an internet card. Insert an internet card to install.\n")
     os.exit(false)
 end
 if (opts.c==nil and opts.g==nil) or (opts.c and opts.g) then
-    print("In order to install GDS you must run \n/home/installer.lua -c\nor /home/installer.lua -g\nThe -c option installs the user interface which can be used on a tablet whereas the -g option installs the gate computer program. Including an 'a' in the options will create the autorun file.")
+    print("In order to install GDS you must run 'gds -c' or 'gds -g'\nThe -c option installs the user interface which can be used on a tablet whereas the -g option installs the gate computer program.\nIncluding an 'a' in the options will create the autorun file.")
     os.exit(false)
 end
 
@@ -56,8 +58,8 @@ local function downloadFile(filePath, directory)
         file:close()
     end)
     if not success then
-        io.stderr:write("Unable to Download\n")
-        io.stderr:write(err)
+        print("Unable to download"..tostring(fileName))
+        print(err)
     end
 end
 
@@ -66,7 +68,7 @@ if not filesystem.isDirectory("/gds") then
     print("Creating \"/gds\" directory")
     local success, msg = filesystem.makeDirectory("/gds")
     if success == nil then
-        io.stderr:write("Failed to created \"/gds\" directory, "..msg)
+        print("Failed to created \"/gds\" directory, "..msg)
         os.exit(false)
     end
 end
@@ -82,36 +84,50 @@ if filesystem.exists("/gds/clientinterface.lua") or filesystem.exists("/gds/gate
         os.exit(true)
     end
 end
-
+print("Cleaning up old files..")
+for i, address in ipairs (gdsFiles) do
+    if filesystem.exists(address) then
+        print("Removed "..address..": "..tostring(filesystem.remove(address)))
+    end
+end
 print("Retrieving files...")
 if (filesystem.exists("/gds/clientinterface.lua") and not filesystem.exists("/gds/gatecomputer.lua")) or opts.c~=nil then --c = controller
-    --pull latest and GUI libraries
-    --shell.setWorkingDirectory("/gds/")
     downloadFile("clientinterface.lua","/gds/")
     downloadFile("libraries/guilist.lua","/lib/")
     downloadFile("libraries/guiwindow.lua","/lib/")
     downloadFile("libraries/guitextbox.lua","/lib/")
     downloadFile("libraries/guibutton.lua","/lib/")
 elseif (filesystem.exists("/gds/gatecomputer.lua") and not filesystem.exists("/gds/clientinterface.lua")) or opts.g~=nil then --g = gate
-    --pull latest 
-    --shell.setWorkingDirectory("/gds/")
     downloadFile("gatecomputer.lua","/gds/")
 end
 downloadFile("gds.lua","/bin/")
-if opts.a then --autorun
-    local file = io.open("/autorun.lua", "w") --why is this breaking things ?????
-    file:write([[
-local shell = require("shell")
-local filesystem = require("filesystem")
 
-if filesystem.exists("/bin/gds.lua") then
-    shell.execute("/bin/gds.lua")
-else
-    print("GDS is not installed.\n")
-end
-    ]])
-    file:close()
-    print("Created /autorun.lua")
+if opts.a then --autorun
+    if filesystem.exists("/home/.shrc") then
+        local line, foundGDSAuto = nil, false
+        local file, reason = io.open("/home/.shrc")
+        repeat
+            local line = file["readLine"](file, false)
+            if line then
+                foundGDSAuto = line=="/bin/gds.lua"
+            end
+        until not line or foundGDSAuto
+        file:close()
+        if not foundGDSAuto then
+            file, reason = io.open("/home/.shrc", "a")
+            file:write("/bin/gds.lua")
+            file:close()
+            print("Created autorun for GDS.")
+        else
+            print("GDS is already autorun.")
+        end
+    else
+        local file, reason = io.open("/home/.shrc", "w")
+        file:write("/bin/gds.lua")
+        file:close()
+        print("Created autorun for GDS.")
+    end
+    print("To remove GDS from autorun, edit the /home/.shrc file and remove the line with /bin/gds.lua")
 end
 
 print([[
