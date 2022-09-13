@@ -8,7 +8,7 @@ for k,v in pairs(opts) do options = options..tostring(k) end
 if opts.u then --update
     local gdsType = (filesystem.exists("/gds/clientinterface.lua") and "-c") or (filesystem.exists("/gds/gatecomputer.lua") and "-g")
     if gdsType then
-        local downloadedInstaller = shell.execute("wget -f https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/installer.lua"))
+        local downloadedInstaller = shell.execute("wget -f https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/installer.lua")
         if downloadedInstaller then
             print("Downloaded installer...")
             shell.execute("/home/installer.lua "..gdsType)
