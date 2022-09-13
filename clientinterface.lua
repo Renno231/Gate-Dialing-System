@@ -609,7 +609,7 @@ commands = {
     close =  function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local gateA = findEntry(args[2] or databaseList:getIndexFromName(nearbyGatesList.currententry)) or lastEntry -- or findEntry(nearbyGatesList.currententry) or findEntry(databaseList.currententry)
+        local gateA = findEntry(args[2] or databaseList:getIndexFromName(nearbyGatesList.entries[nearbyGatesList.currententry])) or lastEntry -- or findEntry(nearbyGatesList.currententry) or findEntry(databaseList.currententry)
         if gateA then
             threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="close", user = {name = tostring(lastUser)}})
             returnstr = "Closing gate "..gateA.Name
