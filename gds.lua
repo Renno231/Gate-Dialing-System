@@ -9,7 +9,7 @@ for k,v in pairs(opts) do options = options..tostring(k) end
 if opts.u then --update
     local gdsType = (filesystem.exists("/gds/clientinterface.lua") and "-c") or (filesystem.exists("/gds/gatecomputer.lua") and "-g")
     if gdsType then
-        if filesystem.exist("/home/installer.lua") then
+        if filesystem.exists("/home/installer.lua") then
             print("Running GDS installer...")
             shell.execute("/home/installer.lua "..gdsType)
         else
