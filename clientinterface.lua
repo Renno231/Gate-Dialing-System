@@ -59,10 +59,11 @@ local settings = { --add a read and save ability
     speedDial = true;
     lastDataBaseEntry = nil; --string; for smart loading of previous usage
     lastNearbyEntry = nil; --  ^ same 
+    defaultGateTimeout = 30;
 }
 
 --predeclaring variables
-local databaseList, historyList, nearbyGatesList, processInput, recordToOutput
+local commands, databaseList, historyList, nearbyGatesList, processInput, recordToOutput
 
 --thread handling
 local threads = {} --threads.example = thread.create(function() end); threads.example:kill(); threads.example:suspend()
@@ -257,28 +258,10 @@ databaseList = listapi.List.new("Database", gateOperator.size.x*0.8,  gateOperat
 nearbyGatesList = listapi.List.new("Nearby", gateOperator.size.x*0.8,  gateOperator.size.y*(5/23), gateOperator.pos.x+3, gateOperator.pos.y + databaseList.size.y + 4)
 historyList = listapi.List.new("History", gateOperator.size.x*0.8,   gateOperator.size.y*0.9, gateOperator.pos.x+1, gateOperator.pos.y+1)
 
-local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, gateOperator.pos.x + gateOperator.size.y - 3, 1, 1, "Dial", function() 
-    if databaseList.currententry and nearbyGatesList.currententry then
-        local gateA = nearbyGatesList.entries[nearbyGatesList.currententry]
-        if gateA then
-            processInput(lastUser, settings.prefix.."dial "..string.gsub(gateA," ","_").." "..databaseList.currententry) 
-        end
-    end
-end)
-
-local scanNearbyButton = buttonapi.Button.new(dialButton.xPos+7, dialButton.yPos, 1, 1, "Scan")
-scanNearbyButton.func = function() 
-    scanNearbyButton.disabled = true
-    recordToOutput("Scanning for nearby gates in range "..settings.modemRange..".")
-    nearbyGatesList.entries = {}
-    nearbyGatesList:display()
-    threads.scan = thread.create(scanNearby)
-    event.timer(0.25, function() scanNearbyButton.disabled = false end)
-    --button:hide() event.timer(0.25, function() button:display() end)
-end
-
-local closeGateButton = buttonapi.Button.new(scanNearbyButton.xPos+7, dialButton.yPos, 1, 1, "Close")
 --function attached later on in code
+local dialButton = buttonapi.Button.new(gateOperator.pos.x+3, gateOperator.pos.x + gateOperator.size.y - 3, 1, 1, "Dial")
+local scanNearbyButton = buttonapi.Button.new(dialButton.xPos+7, dialButton.yPos, 1, 1, "Scan")
+local closeGateButton = buttonapi.Button.new(scanNearbyButton.xPos+7, dialButton.yPos, 1, 1, "Close")
 
 databaseTab.func = function() 
     gateOperator:write(databaseList.pos.x-3, databaseList.pos.y-2, "|Database: "..#databaseList.entries)
@@ -341,7 +324,7 @@ end
 --output window code end
 
 --command processing 
-local commands = {
+commands = {
     clear = function(...) 
         outputBuffer = {}
         displayOutputBuffer()
@@ -390,9 +373,9 @@ local commands = {
     quit = function(...)
         local args = {...}
         isRunning = false
-        if args[2] == "-r" then 
+        --[[if args[2] == "-r" then 
             forceRestart = true 
-        end
+        end]]
     end;
     get = function(...) 
         local args = {...}
@@ -595,13 +578,13 @@ local commands = {
     dial = function(...) --need to add the 4th argument as a timer to close the gate, -1 signifies as long as possible, otherwise its in seconds default = 30
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local cmdPayload = 'gds{command="dial",args={fast='..tostring(settings.speedDial)..', user = {name="'..tostring(lastUser)..'"}, Address='
+        local cmdPayload = {command = "dial", args = {fast = settings.speedDial, timer = tonumber(args[4])}, user = {name = tostring(lastUser)}}
         local gateA, gateB
         if args[2] and args[3] then
             gateA = findEntry(args[2])
             gateB = findEntry(args[3])
-        elseif args[2] and args[3] == nil then
-            gateA = findEntry(nearbyGatesList.currententry or 1)
+        elseif args[2] and args[3] == nil and #nearbyGatesList.entries>0 then
+            gateA = findEntry(nearbyGatesList.currententry or nearbyGatesList.entries[1])
             gateB = findEntry(args[2])
         elseif args[2] == nil and args[3] == nil then
             if nearbyGatesList.currententry and databaseList.currententry then
@@ -613,7 +596,8 @@ local commands = {
             if gateA.UUID=="unknown" or gateA.UUID == nil then
                 returnstr = "Entry missing computer address."
             else
-                threads.send= thread.create(send, gateA.UUID, settings.networkPort, cmdPayload..serialization.serialize(gateB.Address):sub(1).."}}")
+                cmdPayload.args.Address = gateB.Address
+                threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, cmdPayload)
                 returnstr = "Dialing from "..gateA.Name.." to "..gateB.Name.."..."
                 lastEntry = gateA
             end
@@ -625,9 +609,9 @@ local commands = {
     close =  function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local gateA = findEntry(args[2]) or lastEntry -- or findEntry(nearbyGatesList.currententry) or findEntry(databaseList.currententry)
+        local gateA = findEntry(args[2] or nearbyGatesList.currententry) or lastEntry -- or findEntry(nearbyGatesList.currententry) or findEntry(databaseList.currententry)
         if gateA then
-            threads.send= thread.create(send, gateA.UUID, settings.networkPort, 'gds{command="close", user = {name = "'..tostring(lastUser)..'"}}')
+            threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="close", user = {name = tostring(lastUser)}})
             returnstr = "Closing gate "..gateA.Name
             lastEntry = gateA
         else
@@ -716,7 +700,7 @@ local EventListeners = {
                     if timeReceived - lastReceived[msgdata.uuid] > 5 then
                         lastReceived[msgdata.uuid] = timeReceived
                         recordToOutput("Receiving address data from.."..msgdata.uuid.." of type "..newGateType)
-                        local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, newGateType) --add additional checks?
+                        local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, "MW") or findEntry(newAddress, "PG") or findEntry(newAddress, "UN")
                         if existingEntry then
                             local returnstr = "Found existing entry "..existingEntry.Name.." from scan."
                             if existingEntry.UUID ~= msgdata.uuid then
@@ -857,7 +841,26 @@ local EventListeners = {
     )
 }
 
-closeGateButton.func = commands.close
+--doing things
+dialButton.func = function() 
+    if databaseList.currententry then
+        local gateA = databaseList:getIndexFromName(nearbyGatesList.entries[nearbyGatesList.currententry])
+        local inputstr = settings.prefix.."dial"
+        if gateA then inputstr = inputstr.." "..gateA end
+        inputstr = inputstr.." "..databaseList.currententry
+        recordToOutput("Test"..inputstr)
+        processInput(lastUser, inputstr) 
+    end
+end
+closeGateButton.func = function() 
+    processInput(nil, settings.prefix.."close")
+end
+scanNearbyButton.func = function() 
+    scanNearbyButton.disabled = true
+    processInput(nil, settings.prefix.."scan")
+    event.timer(0.25, function() scanNearbyButton.disabled = false end)
+    --button:hide() event.timer(0.25, function() button:display() end)
+end
 gateOperator:selectTab("Database")
 scanNearby() --first scan to check where things are
 --main loop to keep it from returning to the terminal
@@ -893,5 +896,5 @@ for i,v in pairs (package.loaded) do
     end
 end
 if forceRestart then
-    dofile("/bin/gds.lua")
+    require"shell".execute("/gds/clientinterface.lua")
 end
