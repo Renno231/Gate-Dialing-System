@@ -27,6 +27,8 @@ local listeningPorts = {160}
 local commandLog = {} --table.insert(commandLog, sender.." "..self.command)
 local threads = {} --threads.example = thread.create(function() end); threads.example:kill(); threads.example:suspend()
 local lastReceived = {} -- for wireless messages
+local gateStatus = "idle"
+local lastSuccessfulDial = nil
 
 term.clear()
 if component.isAvailable("modem") then
@@ -97,7 +99,7 @@ local EventListeners = {
     end),
 
     stargate_open = event.listen("stargate_open", function(_, _, caller, isInitiating) 
-    
+        gateStatus = "open"
     end),
 
     stargate_wormhole_stabilized = event.listen("stargate_wormhole_stabilized", function(_, _, caller, isInitiating) 
@@ -105,7 +107,7 @@ local EventListeners = {
     end),
 
     stargate_close = event.listen("stargate_close", function(_, _, caller, reason) 
-    
+        gateStatus = "close"
     end),
 
     stargate_wormhole_closed_fully = event.listen("stargate_wormhole_closed_fully", function(_, _, caller, isInitiating) 
@@ -123,19 +125,17 @@ local EventListeners = {
                 print("Receiving instructions..."..msg:sub(4))
                 local msgdata = load("return "..msg:sub(4))() --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}
                 local command = msgdata.command
-                local args = msgdata.args
-                local user = msgdata.user
+                local args, user = msgdata.args, msgdata.user
                 local userprocessKey = command..sender --useful for tracking actions by a specific user instead of total interaction by a specific user
-                local canProcess = true
-                if isPrivate then
-                    if type(user) == "table" then
-                        if type(user.name) == "string" then
+                local canProcess = false
+                print("User: ",user)
+                if type(user) == "table" then
+                    if type(user.name) == "string" then
+                        if isPrivate then
                             canProcess = allowedList[user.name]
                         else
-                            canProcess = false
+                            canProcess = true
                         end
-                    else
-                        canProcess = false
                     end
                 end
                 if canProcess then
@@ -185,6 +185,8 @@ local EventListeners = {
                                     if type(newCheck) == "table" then
                                         newAddress = newCheckAddress
                                         totalGlyphs = #newAddress
+                                        newAddressStr = serialization.serialize(newAddress)
+                                        newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
                                         print("Found shorter address:"..#newAddress)
                                     --else
                                     --    print("Shortest address is "..totalGlyphs.." glyphs.")
@@ -265,7 +267,9 @@ local EventListeners = {
                                             until stargate.getGateStatus() == "idle"
                                             print("Pressing big red button.")
                                             local _, result, errormsg = dhd.pressBRB()
-                                            if result~="dhd_engage" then 
+                                            if result=="dhd_engage" then 
+                                                lastSuccessfulDial = newAddressStr
+                                            else
                                                 print("BRB = "..result)
                                             end
                                         else
@@ -273,12 +277,29 @@ local EventListeners = {
                                                 currentDialedAddress = stargate.dialedAddress
                                                 os.sleep()
                                             until string.gsub(currentDialedAddress:sub(currentDialedAddress:len()-lastGlyph:len()), "]", "") == lastGlyph and stargate.getGateStatus() == "idle"
-                                            print("Stargate engaged: "..tostring(stargate.engageGate()=="stargate_engage"))
+                                            if stargate.engageGate() == "stargate_engage" then
+                                                print("Stargate engaged: true")
+                                                lastSuccessfulDial = newAddressStr
+                                            end
                                         end
                                     end
                                     os.sleep()
                                 end
                                 print("Finished dialing. Time elapsed: "..(computer.uptime() - dialStart))
+                                --[[if tonumber(args.timer) and lastSuccessfulDial == newAddressStr then
+                                    local closeGateAfter = tonumber(args.timer)
+                                    if closeGateAfter >= 1 then
+                                        
+                                        local timerID = event.timer(0.1, function() --doesn't work inside of threads, seems it needs to be inside of main thread 
+                                            print("Attempting to close gate...")
+                                            print(stargate.dialedAddress == lastSuccessfulDial)--, stargate.getGateStatus()=="open")
+                                            if stargate.dialedAddress == lastSuccessfulDial and stargate.getGateStatus()=="open" then
+                                                stargate.disengageGate()
+                                            end
+                                        end)
+                                        print("Gate will close in "..closeGateAfter.." seconds.", timerID)
+                                    end
+                                end]]
                             else
                                 print("Address check failed. Error: "..addressCheck)
                             end
@@ -297,6 +318,8 @@ local EventListeners = {
                                 print("Aborting dialing...")
                             end
                         end
+                    elseif command == "pause" then
+                        if threads.dialing then threads.dialing:kill() end
                     elseif command == "iris" then
                         --todo
                     elseif command == "query" then
