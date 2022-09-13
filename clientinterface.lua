@@ -351,7 +351,7 @@ local commands = {
             local newrange = math.min(math.max(tonumber(args[3]) or 16, 16), 400)
             settings.modemRange = newrange
             modem.setStrength(newrange)
-            returnstr = "Set modem range to "..settings.modemRange -- "modem range = modemrange"
+            returnstr = "Set modem range to "..tostring(settings.modemRange) -- "modem range = modemrange"
         elseif args[2] == "port" or args[2] == "channel" then
             if tonumber(args[3]) then
                 modem.close(settings.networkPort)
@@ -363,19 +363,21 @@ local commands = {
                     modem.close(settings.networkPort)
                     settings.networkPort = defaultPort
                     modem.open(settings.networkPort)
-                    returnstr = "Set network port to default "..defaultPort
+                    returnstr = "Set network port to default "..tostring(defaultPort)
                 end
             end
         elseif args[2] == "speed" then
             if args[3] == "on" or args[3] == "true" then
                 settings.speedDial = true
-                returnstr = "Set speed dial to "..settings.SpeedDial
+                returnstr = "Set speed dial to "..tostring(settings.SpeedDial)
             elseif args[3] == "off" or args[3] == "false" then
                 settings.speedDial = false
-                returnstr = "Set speed dial to "..settings.SpeedDial
+                returnstr = "Set speed dial to "..tostring(settings.SpeedDial)
             elseif args[3] == nil then
                 settings.speedDial = not settings.SpeedDial
-                returnstr = "Toggling speed dial to "..settings.SpeedDial
+                returnstr = "Toggling speed dial to "..tostring(settings.SpeedDial)
+            else
+                returnstr = "'"..args[3].."' is not a valid state for speed"
             end
         end
         writeSettingsFile()
@@ -392,14 +394,22 @@ local commands = {
         local args = {...}
         local returnstr = "Insufficient arguments."
         --for i,a in next, args do recordToOutput(i..":"..type(a).." = "..tostring(a)) end
-        if args[2] == "entries" and args[3] == "count" then
-            returnstr = "Total addresses = "..#databaseList.entries
-        elseif args[2] == "entry" and type(tonumber(args[3])) == "number" then
-            args[3] = tonumber(args[3])
-            if args[3] > 0 and args[3] <= #databaseList.entries then
-                returnstr = "Entry "..args[3].." = "..databaseList.entries[args[3]] --#database[args[3]].Name 
+        if args[2] == "entries" then
+            if args[3] == "count" then
+                returnstr = "Total addresses = "..#databaseList.entries
             else
-                returnstr = "Index out of bounds."
+                returnstr = "'"..args[3].."' is not a valid sub parameter for '"..args[2].. "'"
+            end
+        elseif args[2] == "entry" then
+            if type(tonumber(args[3])) == "number" then
+                args[3] = tonumber(args[3])
+                if args[3] > 0 and args[3] <= #databaseList.entries then
+                    returnstr = "Entry "..args[3].." = "..databaseList.entries[args[3]] --#database[args[3]].Name 
+                else
+                    returnstr = "Index out of bounds."
+                end
+            else
+                returnstr = "sub parameter of '"..args[2].."' must be of the type 'number'"
             end
         elseif args[2] == "port" or args[2] == "channel" then
             returnstr = "Current network port is "..settings.networkPort
@@ -411,6 +421,8 @@ local commands = {
             returnstr = "Unused memory: "..tostring(math.floor((computer.freeMemory()/computer.totalMemory())*100)).."%"
         elseif args[2] == "radius" or args[2] == "range" then
             returnstr = "Current modem range is "..settings.modemRange
+        elseif #args == 2 then
+            returnstr = "'"..args[2].."' is an invalid value to get."
         end
         return returnstr
     end;
@@ -631,7 +643,7 @@ local commands = {
     end;
     sync = function(...)
         local args = {...}
-        local returnstr = "Insufficient arguments."
+        local returnstr = "Not yet implimented."--"Insufficient arguments."
         --for address or database syncing
         return returnstr
     end;
@@ -647,7 +659,7 @@ end
 --command aliases
 setAliases(commands.set,"s","st")
 setAliases(commands.quit, "q", "exit")
-setAliases(commands.clear, "c", "clr")
+setAliases(commands.clear, "c", "clr", "cls")
 setAliases(commands.get, "g")
 setAliases(commands.delete, "del", "remove", "rmv")
 setAliases(commands.add, "new")
