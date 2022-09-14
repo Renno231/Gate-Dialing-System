@@ -24,6 +24,7 @@ end
 function TextBox:moveCursor(offset)
     if type(offset) == "number" then
         self.cursorpos = math.min(math.max(self.cursorpos + offset, 1), self.text:len()+1)
+        
     end
 end
 
@@ -37,12 +38,13 @@ function TextBox:addText(txt)
     if txt then
         txt = tostring(txt)
         local index = self.cursorpos
-        if index >= self.text:len() then
+        if index > self.text:len() then
             self.text = self.text..txt
         else
             self.text = self.text:sub(1, index-1)..txt..self.text:sub(index)
         end
         self:moveCursor(txt:len())
+        --
     end
 end
 
@@ -77,16 +79,17 @@ function TextBox:display()
     --gpu.setForeground(0x333333)
     local currentlength, actualcursorpos = self.text:len(), nil
     if self.cursorpos >= currentlength and currentlength>self.width then
+        local displacement = (self.cursorpos > currentlength and self.cursorpos-currentlength or 0)
         gpu.set(self.pos.x, self.pos.y, 
-            self.text:sub(math.max(currentlength-self.width, 0))
+            self.text:sub(math.max(currentlength-self.width + displacement, 0))
         ) 
-        actualcursorpos = self.width+1
+        actualcursorpos = self.width --+ (displacement > 0 and 1 or displacement)
     elseif self.cursorpos < currentlength and currentlength>self.width then --not perfect, needs refinement
         local startpos = math.max(1, currentlength-(self.width+(currentlength-self.cursorpos)))
         gpu.set(self.pos.x, self.pos.y, 
             self.text:sub(startpos, startpos + self.width) -- math.max(self.width+2, currentlength-(currentlength-self.cursorpos))) --math.max(currentlength-self.width, 0))
         ) 
-        actualcursorpos = self.cursorpos%self.width-1
+        actualcursorpos = self.cursorpos - startpos + 1-- self.cursorpos%self.width-1
     elseif currentlength <= self.width then
         gpu.set(self.pos.x, self.pos.y, 
             self.text
