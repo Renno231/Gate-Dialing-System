@@ -33,7 +33,7 @@ end
 function List:addEntry(newstr, index, refresh)
     local added = false
     if newstr and self.active then
-        newstr = newstr:sub(1, self.size.x)
+        --newstr = newstr:sub(1, self.size.x)
         if index==nil then
             table.insert(self.entries, newstr)
             added = true
@@ -72,11 +72,11 @@ function List:removeEntry(selector)
 end
 
 function List:getIndexFromName(name)
-    if name == nil then return end
+    if type(name)~="string" then return end
     local foundIndex = nil
     name = name:lower()
     for i, entry in ipairs (self.entries) do
-        if entry:sub(1, name:len()):lower() == name then
+        if entry:lower()==name or entry:sub(1, name:len()):lower() == name or name:sub(1, entry:len()) == entry:lower() then
             foundIndex = i
             break
         end
