@@ -100,20 +100,23 @@ local function readSettingsFile()
     if type(settingsOverride) == "table" then
         for setting, value in pairs (settingsOverride) do
             if settings[setting]~=nil then
-                if type(setting[setting]) == type(value) then
+                if type(settings[setting]) == type(value) then
                     settings[setting] = value
                 end
             end
         end
         settings.modemRange = math.min(math.max(tonumber(settings.modemRange) or 16, 16), 400)
+        modem.close(settings.networkPort)
         settings.networkPort = math.min(math.max(tonumber(settings.networkPort), 1),  65535)
+        modem.setStrength(settings.modemRange)
+        modem.open(settings.networkPort)
     end
 end
 readSettingsFile()
 
 local function writeSettingsFile()
     local file = io.open(SettingsFile, "w")
-    recordToOutput("settings file"..tostring(file))
+    --recordToOutput("settings file"..tostring(file))
     file:write("local settings = "..serialization.serialize(settings).."\n\nreturn settings")
     file:close()
 end
@@ -144,23 +147,17 @@ local function readDatabaseFile()
 end
 
 local function writeToDatabaseFile()
-    local status, value = pcall(function() return threads.databaseWrite:status() end)
-    if status == true then
-        while threads.databaseWrite:status() ~= "dead" do os.sleep(0.05) end
+    local file, msg = io.open(DatabaseFile, "w")
+    file:write("database = {\n")
+    for i, entry in ipairs(database) do
+        file:write("    "..serialization.serialize(entry)..";\n")
     end
-    threads.databaseWrite = thread.create(function()
-        local file, msg = io.open(DatabaseFile, "w")
-        file:write("database = {\n")
-        for i, entry in ipairs(database) do
-            file:write("    "..serialization.serialize(entry)..";\n")
-        end
-        file:write("}\n\nhistory = {")
-        for i, entry in ipairs(history) do
-            file:write("    "..serialization.serialize(entry)..";\n")
-        end
-        file:write("}\n\nreturn database, history")
-        file:close()
-    end)
+    file:write("}\n\nhistory = {")
+    for i, entry in ipairs(history) do
+        file:write("    "..serialization.serialize(entry)..";\n")
+    end
+    file:write("}\n\nreturn database, history")
+    file:close()
 end
 
 local function findEntry(selector, addresstype) --address type is optional and only used when passing a whole address
@@ -183,13 +180,15 @@ local function findEntry(selector, addresstype) --address type is optional and o
         end
     elseif type(selector) == "table" and type(addresstype) == "string" then
         local concatAdrs = table.concat(selector[addresstype], ", ")
-        for i, entry in ipairs (database) do
-            if entry.Address[addresstype] ~= nil then
-                local concatEntry = table.concat(entry.Address[addresstype],", ")
-                if (concatEntry:sub(1, concatAdrs:len()) == concatAdrs or concatAdrs:sub(1, concatEntry:len()) == concatEntry) then --check for POI?
-                    foundEntry = entry
-                    entryIndex = i
-                    break
+        if concatAdrs~="" then
+            for i, entry in ipairs (database) do
+                if entry.Address[addresstype] ~= nil then
+                    local concatEntry = table.concat(entry.Address[addresstype],", ")
+                    if concatEntry~="" and (concatEntry:sub(1, concatAdrs:len()) == concatAdrs or concatAdrs:sub(1, concatEntry:len()) == concatEntry) then --check for POI?
+                        foundEntry = entry
+                        entryIndex = i
+                        break
+                    end
                 end
             end
         end
@@ -411,6 +410,57 @@ commands = {
         end
         return returnstr
     end;
+    import = function(...)
+        local args = {...}
+        local returnstr = "Insufficient arguments."
+        if args[2] == "ags" then
+            if filesystem.exists("/ags/gateEntries.ff") then
+                returnstr = "Attempting to import to database... "
+                local successfullEntrycount = 0
+                function GateEntry(ge)
+                    local existingEntry = nil
+                    if ge.gateAddress ~= nil then 
+                        ge.Address = ge.gateAddress 
+                        ge.gateAddress = nil 
+                        existingEntry = findEntry(ge.Address, "MW") or findEntry(ge.Address, "PG") or findEntry(ge.Address, "UN")
+                    else
+                        return
+                    end
+                    if existingEntry~= nil then 
+                        returnstr = returnstr .. " Entry "..existingEntry.Name.." already exists, cannot import "..tostring(ge.name).."."
+                        return
+                    else
+                        returnstr = returnstr .. " Adding new entry "..tostring(ge.name)..". "
+                    end
+                    ge.IDCs = {}
+                    if ge.IDC ~= nil then
+                        local tmpidc = tonumber(ge.IDC)
+                        ge.IDC = nil
+                        if tmpidc then ge.IDCs[tmpidc] = "unknown" end
+                    end
+                    ge.AdminOnly = nil
+                    ge.fave = nil
+                    ge.Type = (#ge.Address.MW>0 and "MW") or (#ge.Address.PG>0 and "PG") or (#ge.Address.UN>0 and "UN")
+                    ge.UUID = "unknown";
+                    if ge.name then ge.Name = ge.name ge.name = nil else ge.Name = "Unknown "..#database end
+                    table.insert(database, ge)
+                    databaseList:addEntry(ge.Name, nil, false)
+                    successfullEntrycount = successfullEntrycount + 1
+                end
+                function HistoryEntry() end
+                dofile("/ags/gateEntries.ff")
+                writeToDatabaseFile()
+                GateEntry, HistoryEntry = nil, nil
+                returnstr = returnstr.." Imported "..successfullEntrycount.." "..(successfullEntrycount == 1 and "entry" or "entries").." from AGS database."
+                if successfullEntrycount > 0 and databaseList.visible then
+                    databaseList:display()
+                end
+            else
+                returnstr = "Invalid file"
+            end
+        end
+        return returnstr
+    end;
     add = function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
@@ -487,10 +537,12 @@ commands = {
                 nearbyGatesList:removeEntry(gateA.Name)
                 databaseList:removeEntry(gateA.Name)
                 writeToDatabaseFile()
-                --if databaseList.visible then 
+                if databaseList.visible then 
                     databaseList:display() 
                     nearbyGatesList:display() 
-                --end
+                    gateOperator:write(databaseList.pos.x-3, databaseList.pos.y-2, "|Database: "..#databaseList.entries)
+                    gateOperator:write(nearbyGatesList.pos.x-3, nearbyGatesList.pos.y-2, "|Nearby: "..#nearbyGatesList.entries)
+                end
             end
         end
         return returnstr
@@ -633,6 +685,9 @@ commands = {
         --for address or database syncing
         return returnstr
     end;
+    help = function(...)
+        return "Help is not yet implimented."
+    end;
 }
 local function setAliases(func, ...)
     local args = {...}
@@ -651,6 +706,7 @@ setAliases(commands.delete, "del", "remove", "rmv")
 setAliases(commands.add, "new")
 setAliases(commands.dial, "d")
 setAliases(commands.rename, "rn")
+setAliases(commands.help, "cmds")
 
 function processInput(usr, inputstr)
     local timeran = "["..os.date("%H:%M", getRealTime()).."]"
