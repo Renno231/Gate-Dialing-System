@@ -152,7 +152,7 @@ function List:scroll(direction)
 end
 
 function List:display()
-    if #self.entries > 0 and self.active then
+    if self.active then
         self.visible = true
         local startx = self.pos.x
         local starty = self.pos.y

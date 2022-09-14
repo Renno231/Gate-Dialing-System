@@ -145,6 +145,7 @@ function Window:addTab(name, offset, func, alignment, highlight, textcolor, back
                 backgroundcolor = backgroundcolor or self.backgroundcolor;
                 offset = offset;
                 alignmenttype = alignment;
+                selected = false;
             }
             newtab.Name = newtab.Name:sub(1, 12)
             newtab.size = newtab.Name:len() + 2
