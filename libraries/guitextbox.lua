@@ -53,6 +53,7 @@ function TextBox:trim(direction) --
         if self.cursorpos > currentlength then -- on the end
             if direction == -1 then
                 self.text = self.text:sub(1, currentlength+direction)
+                self:moveCursor(-1)
             end
         else
             if direction == -1 then
@@ -74,25 +75,28 @@ function TextBox:display()
     gpu.fill(self.pos.x, self.pos.y, self.pos.x + self.width, 1, " ")
     
     --gpu.setForeground(0x333333)
-    local currentlength = self.text:len()
+    local currentlength, actualcursorpos = self.text:len(), nil
     if self.cursorpos >= currentlength and currentlength>self.width then
         gpu.set(self.pos.x, self.pos.y, 
             self.text:sub(math.max(currentlength-self.width, 0))
         ) 
+        actualcursorpos = self.width+1
     elseif self.cursorpos < currentlength and currentlength>self.width then --not perfect, needs refinement
         local startpos = math.max(1, currentlength-(self.width+(currentlength-self.cursorpos)))
         gpu.set(self.pos.x, self.pos.y, 
             self.text:sub(startpos, startpos + self.width) -- math.max(self.width+2, currentlength-(currentlength-self.cursorpos))) --math.max(currentlength-self.width, 0))
         ) 
+        actualcursorpos = self.cursorpos%self.width-1
     elseif currentlength <= self.width then
         gpu.set(self.pos.x, self.pos.y, 
             self.text
         )
+        actualcursorpos = self.cursorpos-1
     end
     --gpu.setForeground(previousForeground)
     if self.selected then --needs fixing 
         gpu.setBackground(0xA0A0A0)
-        gpu.set(self.pos.x+math.max(1, (self.cursorpos%self.width)-1), self.pos.y, " ")
+        gpu.set(self.pos.x + actualcursorpos, self.pos.y, " ")
     end
     gpu.setBackground(previousBackground)
 
@@ -108,6 +112,7 @@ function TextBox:touch(x, y, softtouch)
         else
             self:setCursor(x)
         end
+        self:display()
     else
         self.selected = false
     end
