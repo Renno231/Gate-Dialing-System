@@ -561,7 +561,7 @@ commands = {
             newName = string.gsub(newName, "_", " ")
             returnstr = "Renaming entry "..gateA.Name.." at index "..gateAIndex.." to "..newName
             databaseList.entries[gateAIndex] = newName
-            local isInNearby = nearbyGatesList:getIndexFromName(gateA.Name) 
+            local isInNearby = nearbyGatesList:getIndexFromName(gateA.Name)
             gateA.Name = newName
             if isInNearby then
                 returnstr = "Renamed entry in nearbylist"
@@ -597,7 +597,7 @@ commands = {
                 returnstr = "Entry missing computer address."
             else
                 cmdPayload.args.Address = gateB.Address
-                threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, cmdPayload)
+                threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, cmdPayload) --maybe create an event timer for scanNearby 5-10 seconds after dialing which assumes they went through the gate
                 returnstr = "Dialing from "..gateA.Name.." to "..gateB.Name.."..."
                 lastEntry = gateA
             end
