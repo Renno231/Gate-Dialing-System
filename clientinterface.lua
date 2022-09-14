@@ -197,15 +197,23 @@ local function findEntry(selector, addresstype) --address type is optional and o
 end
 
 local function isValidGlyph(set, glyph)
+    local isValid = false
     if type(set) == "string" then
         if set == "MW" then
             set = GlyphsMW
         elseif set == "PG" then
             set = GlyphsPG
+        elseif set == "UN" then
+            local glyphsplit = strsplit(glyph)
+            local UNglyph = tonumber(glyphsplit[2] or "")
+            if UNglyph then
+                if UNglyph > 0 and UNglyph < 37 then
+                    isValid = true
+                end
+            end
         end
     end
-    local isValid = false
-    if set and glyph then
+    if set and glyph and set~="UN" then
         for i, gly in ipairs(set) do
             if gly:sub(1, glyph:len()):lower() == glyph:lower() then -- gly:lower():gmatch(glyph:lower())then
                 isValid = gly
@@ -321,7 +329,24 @@ function recordToOutput(...)
 end
 
 --output window code end
-
+local commandDescriptions = {
+    clear = "empties output buffer";
+    set = "modifies GDS settings such as modem range/radius, port/channel, and default dialing speed";
+    quit = "closes GDS";
+    get = "returns information about current settings such as remaining battery,";
+    import = "imports AGS entries from /ags/gateEntries.ff";
+    add = "creates or modifies entries, entry IDCs, and entry UUIDs";
+    delete = "deletes an entry by name or position";
+    swap = "swaps two entries by name or position";
+    move = "moves an entry by name or position to a new position";
+    refresh = "refreshes GDS user interface.";
+    rename = "renames an entry by name or position to the given name, new names must use _ in the place of any spaces";
+    dial = "requests a given entry's computer to dial another given entry";
+    close = "requests a given entry's computer to close its gate";
+    scan = "scans for nearby GDS gate computers";
+    sync = "not yet implimented. shares entries from one GDS client to another";
+    edit = "modifies a given entry by name or position";
+}
 --command processing 
 commands = {
     clear = function(...) 
@@ -471,6 +496,7 @@ commands = {
             local validAddress = true
             local gateType = args[4]:upper()
             for i, glyph in ipairs (entryAddress) do
+                if gateType == "UN" and tonumber(glyph) then glyph = "Glyph "..glyph end
                 validAddress = isValidGlyph(gateType, string.gsub(glyph, "_", " "))
                 if validAddress then 
                     entryAddress[i] = validAddress
@@ -505,7 +531,7 @@ commands = {
             else
                 returnstr = "Invalid address."
             end
-        elseif (args[2] == "idc" or args[2] == "IDC") and args[3] and args[4] then
+        elseif (args[2] == "idc" or args[2] == "IDC") and args[3] and args[4] then --needs to store it as [string] = int, since the gate receives it as an int and reads it as IDCs[int] = string
             local foundEntry = findEntry(args[3])
             if type(foundEntry)=="table" then
                 foundEntry.IDCs[args[4]] = args[5] or lastUser
@@ -681,32 +707,60 @@ commands = {
     end;
     sync = function(...)
         local args = {...}
-        local returnstr = "Insufficient arguments."
+        local returnstr = "Sync is not yet implimented" --"Insufficient arguments."
         --for address or database syncing
         return returnstr
     end;
     help = function(...)
         return "Help is not yet implimented."
     end;
+    edit = function(...)
+        local args = {...}
+        local returnstr = "Insufficient arguments."
+        if args[2] == "entry" and args[3] and args[4] then
+            local gateA, gateAIndex = findEntry(args[3])
+            if gateA then
+                returnstr = "Entry not found."
+                args[4] = args[4]:lower()
+                if (args[4] == "mw" or args[4] == "pg" or args[4] == "un") and gateA.Address[args[4]:upper()]~=nil then
+                    local entrystr = "" --table.concat(gateA.Address[args[4]:upper()], " ")
+                    for i, glyph in ipairs (gateA.Address[args[4]:upper()]) do 
+                        entrystr = entrystr .. " " .. string.gsub(glyph, " ", "_") 
+                    end
+                    event.timer(0, function() 
+                        cmdbar.text = ";add entry "..gateAIndex.." "..args[4]..entrystr
+                        cmdbar:setCursor(16)
+                        cmdbar:display()
+                    end)
+                    returnstr = "Editing entry "..gateA.Name
+                elseif args[4]=="idc" then
+
+                end
+                --cmdbar.text  = 
+            end
+        end
+        return returnstr
+    end;
 }
 local function setAliases(func, ...)
     local args = {...}
-    if type(func)=="function" then
+    if type(commands[func])=="function" then
         for i, alias in pairs (args) do
-            commands[alias] = func
+            commands[alias] = commands[func]
+            commandDescriptions[alias] = commandDescriptions[func]
         end
     end
 end
 --command aliases
-setAliases(commands.set,"s","st")
-setAliases(commands.quit, "q", "exit")
-setAliases(commands.clear, "c", "clr", "cls")
-setAliases(commands.get, "g")
-setAliases(commands.delete, "del", "remove", "rmv")
-setAliases(commands.add, "new")
-setAliases(commands.dial, "d")
-setAliases(commands.rename, "rn")
-setAliases(commands.help, "cmds")
+setAliases("set", "s","st")
+setAliases("quit", "q", "exit")
+setAliases("clear", "c", "clr", "cls")
+setAliases("get", "g")
+setAliases("delete", "del", "remove", "rmv")
+setAliases("add", "new")
+setAliases("dial", "d")
+setAliases("rename", "rn")
+setAliases("help", "cmds")
 
 function processInput(usr, inputstr)
     local timeran = "["..os.date("%H:%M", getRealTime()).."]"
@@ -824,10 +878,11 @@ local EventListeners = {
                     processInput(playerName, cmdbar.text)
                     displayOutputBuffer()
                     resetcmdbar()
-                elseif key == "right" then
-                    cmdbar:moveCursor(1)
-                elseif key == "left" then
-                    cmdbar:moveCursor(-1)
+                elseif key == "left" or key == "right" then
+                    cmdbar:moveCursor(key == "right" and 1 or -1)
+                    if cmdbar.cursorpos == cmdbar.text:len()+1 and cmdbar.cursorpos > 2 and cmdbar.text:sub(cmdbar.text:len()) ~=" " then
+                        cmdbar:addText(" ")
+                    end
                 elseif key == "semicolon" then
                     cmdbar:addText(";")
                 elseif key == "back" then
