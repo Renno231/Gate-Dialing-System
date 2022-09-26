@@ -823,14 +823,14 @@ local EventListeners = {
                                     if existingEntry.Address[glyphset] then
                                         if #adrs < 10 then
                                             if #adrs > #existingEntry.Address[glyphset] then
-                                                existingEntry[glyphset] = adrs
+                                                existingEntry.Address[glyphset] = adrs
                                                 returnstr = returnstr.." Updated "..glyphset.." Address."
                                             end
                                         else
                                             returnstr = returnstr .. " Failure to sync, too many glyphs in "..glyphset.." address: "..#adrs.."."
                                         end
                                     else
-                                        existingEntry[glyphset] = adrs
+                                        existingEntry.Address[glyphset] = adrs
                                         returnstr = returnstr.." Added "..glyphset.." Address."
                                     end
                                 else
