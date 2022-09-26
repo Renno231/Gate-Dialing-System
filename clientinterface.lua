@@ -38,7 +38,6 @@ local lastKeyPressed = ""
 local outputBuffer = {}
 local commandBuffer = {}
 
-local lastUser = nil
 local lastEntry = nil
 local database = {} -- all of the addresses
 local history = {}
@@ -60,6 +59,8 @@ local settings = { --add a read and save ability
     lastDataBaseEntry = nil; --string; for smart loading of previous usage
     lastNearbyEntry = nil; --  ^ same 
     defaultGateTimeout = 30;
+    owner = "";
+    lastUser = nil;
 }
 
 --predeclaring variables
@@ -88,7 +89,7 @@ end
 
 local function scanNearby()
     if computer.uptime()-lastBroadcasted > 1 then
-        broadcast(settings.networkPort, string.format('gds{command = "query", user = {name = %q}}', lastUser or "unknown"))
+        broadcast(settings.networkPort, string.format('gds{command = "query", user = {name = %q}}', settings.lastUser or "unknown"))
     end
 end
 
@@ -534,7 +535,7 @@ commands = {
         elseif (args[2] == "idc" or args[2] == "IDC") and args[3] and args[4] then --needs to store it as [string] = int, since the gate receives it as an int and reads it as IDCs[int] = string
             local foundEntry = findEntry(args[3])
             if type(foundEntry)=="table" then
-                foundEntry.IDCs[args[4]] = args[5] or lastUser
+                foundEntry.IDCs[args[4]] = args[5] or settings.lastUser
                 returnstr = 'Added IDC "'..args[4]..'" to entry '..foundEntry.Name
                 writeToDatabaseFile()
             else
@@ -656,7 +657,7 @@ commands = {
     dial = function(...) --need to add the 4th argument as a timer to close the gate, -1 signifies as long as possible, otherwise its in seconds default = 30
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local cmdPayload = {command = "dial", args = {fast = settings.speedDial, timer = tonumber(args[4])}, user = {name = tostring(lastUser)}}
+        local cmdPayload = {command = "dial", args = {fast = settings.speedDial, timer = tonumber(args[4])}, user = {name = tostring(settings.lastUser)}}
         local gateA, gateB
         if args[2] and args[3] then
             gateA = findEntry(args[2])
@@ -689,7 +690,7 @@ commands = {
         local returnstr = "Insufficient arguments."
         local gateA = findEntry(args[2] or databaseList:getIndexFromName(nearbyGatesList.entries[nearbyGatesList.currententry])) or lastEntry -- or findEntry(nearbyGatesList.currententry) or findEntry(databaseList.currententry)
         if gateA then
-            threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="close", user = {name = tostring(lastUser)}})
+            threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="close", user = {name = tostring(settings.lastUser)}})
             returnstr = "Closing gate "..gateA.Name
             lastEntry = gateA
         else
@@ -822,11 +823,11 @@ local EventListeners = {
                                     if existingEntry.Address[glyphset] then
                                         if #adrs < 10 then
                                             if #adrs > #existingEntry.Address[glyphset] then
-                                                existingEntry.Address.MW = newAddress.MW
-                                                returnstr = returnstr.." Updated MW Address."
+                                                existingEntry[glyphset] = adrs
+                                                returnstr = returnstr.." Updated "..glyphset.." Address."
                                             end
                                         else
-                                            returnstr = returnstr .. " Failure to sync, too many glyphs: "..#adrs.."."
+                                            returnstr = returnstr .. " Failure to sync, too many glyphs in "..glyphset.." address: "..#adrs.."."
                                         end
                                     else
                                         existingEntry[glyphset] = adrs
@@ -867,7 +868,7 @@ local EventListeners = {
     key_down = event.listen(
         "key_down",
         function(_, keyboardAddress, chr, code, playerName)
-            lastUser = playerName
+            settings.lastUser = playerName
             local key = keyboard.keys[code]
             local uckey = unicode.char(chr)
             if key == "semicolon" and not cmdbar.selected then
@@ -907,7 +908,7 @@ local EventListeners = {
                 xpcall(
                 function()
                     --term.setCursor(0, 0)
-                    lastUser = playerName
+                    settings.lastUser = playerName
                     if button == 0 then
                         for i, button in ipairs(buttonapi.Buttons) do
                             if button:touch(x, y) then
