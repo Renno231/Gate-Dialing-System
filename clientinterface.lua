@@ -30,13 +30,12 @@ local DatabaseFile = "/gds/gateEntries.ff"
 local SettingsFile = "/gds/settings.cfg"
 
 local screensizex, screensizey = gpu.getResolution() --80, 25 
-local freeMemoryPercent
 local forceRestart = false
 local isRunning, HadNoError = true, true
 local lastKeyPressed = ""
 
-local outputBuffer = {}
-local commandBuffer = {}
+local outputBuffer = {} --scrolling?
+local commandBuffer = {} --todo
 
 local lastEntry = nil
 local database = {} -- all of the addresses
@@ -534,9 +533,10 @@ commands = {
             end
         elseif (args[2] == "idc" or args[2] == "IDC") and args[3] and args[4] then --needs to store it as [string] = int, since the gate receives it as an int and reads it as IDCs[int] = string
             local foundEntry = findEntry(args[3])
+            local idcKey = args[5] or settings.lastUser
             if type(foundEntry)=="table" then
-                foundEntry.IDCs[args[4]] = args[5] or settings.lastUser
-                returnstr = 'Added IDC "'..args[4]..'" to entry '..foundEntry.Name
+                foundEntry.IDCs[idcKey] = tonumber(args[4])
+                returnstr = 'Added IDC "'..args[4]..'" to entry '..foundEntry.Name.." with key "..idcKey
                 writeToDatabaseFile()
             else
                 returnstr = "Invalid entry/address: "..args[3]
@@ -676,6 +676,7 @@ commands = {
                 returnstr = "Entry missing computer address."
             else
                 cmdPayload.args.Address = gateB.Address
+                cmdPayload.args.IDC = gateB.IDCs[args[5] or settings.lastUser] or -1
                 threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, cmdPayload) --maybe create an event timer for scanNearby 5-10 seconds after dialing which assumes they went through the gate
                 returnstr = "Dialing from "..gateA.Name.." to "..gateB.Name.."..."
                 lastEntry = gateA
@@ -788,7 +789,7 @@ function processInput(usr, inputstr)
             end
         end
    else
-        local chatstr = timeran.." "..usr..": "..inputstr
+        local chatstr = timeran.." "..(usr or "")..": "..inputstr
         recordToOutput(chatstr)
    end
 end
@@ -800,22 +801,22 @@ modem.open(settings.networkPort)
 local restrictedKeyCodes = {[14] = true; [15] = true; [28]=true; [29]=true; [42] = true; [54] = true; [56] = true; [58] = true}
 local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg)
+        local timeReceived = computer.uptime()
         if type(msg) == "string" then
             if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
-                local msgdata = load("return "..msg:sub(8))() --{gateType, address = {MW = ..., }, uuid = modem.address}
+                local msgdata = load("return "..msg:sub(8))() --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
                 local newGateType = msgdata.gateType
                 local newAddress = msgdata.Address
-                local timeReceived = computer.uptime()
-                if msgdata.uuid then
-                    lastReceived[msgdata.uuid] = lastReceived[msgdata.uuid] or timeReceived-6
-                    if timeReceived - lastReceived[msgdata.uuid] > 5 then
-                        lastReceived[msgdata.uuid] = timeReceived
-                        recordToOutput("Receiving address data from.."..msgdata.uuid.." of type "..newGateType)
-                        local existingEntry, _ = findEntry(msgdata.uuid) or findEntry(newAddress, "MW") or findEntry(newAddress, "PG") or findEntry(newAddress, "UN")
+                if msgdata.uuid == sender then
+                    lastReceived[sender] = lastReceived[sender] or timeReceived-6
+                    if timeReceived - lastReceived[sender] > 5 then
+                        lastReceived[sender] = timeReceived
+                        recordToOutput("Receiving address data from.."..sender.." of type "..newGateType)
+                        local existingEntry, _ = findEntry(sender) or findEntry(newAddress, "MW") or findEntry(newAddress, "PG") or findEntry(newAddress, "UN")
                         if existingEntry then
                             local returnstr = "Found existing entry "..existingEntry.Name.." from scan."
-                            if existingEntry.UUID ~= msgdata.uuid then
-                                existingEntry.UUID = msgdata.uuid
+                            if existingEntry.UUID ~= sender then
+                                existingEntry.UUID = sender
                                 returnstr = returnstr.." Updated UUID."
                             end
                             for glyphset, adrs in pairs (newAddress) do
@@ -841,11 +842,11 @@ local EventListeners = {
                             recordToOutput(returnstr)
                         else
                             local newEntry = {
-                                Name = msgdata.Name or msgdata.uuid;
+                                Name = msgdata.Name or sender;
                                 Address = newAddress;
                                 IDCs = {};
                                 Type = newGateType;
-                                UUID = msgdata.uuid;
+                                UUID = sender;
                             }
                             table.insert(database, newEntry)
                             databaseList:addEntry(newEntry.Name)
@@ -862,6 +863,9 @@ local EventListeners = {
                         end
                     end
                 end
+            elseif msg:sub(1, 14) == "gdsdialresult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
+                lastReceived["dialresult"..sender] = timeReceived
+                processInput(nil, msg:sub(16))
             end
         end
     end),
