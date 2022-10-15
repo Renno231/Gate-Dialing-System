@@ -114,6 +114,17 @@ local function readSettingsFile()
 end
 readSettingsFile()
 
+local function strsplit(inputstr, sep)
+    if sep == nil then
+        sep = "%s"
+    end
+    local t={}
+    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+        table.insert(t, str)
+    end
+    return t
+end
+
 local function writeSettingsFile()
     local file = io.open(SettingsFile, "w")
     --recordToOutput("settings file"..tostring(file))
@@ -172,7 +183,7 @@ local function findEntry(selector, addresstype) --address type is optional and o
     elseif type(selector) == "string" then
         selector = string.gsub(selector, "_", " ")
         for i, entry in ipairs (database) do
-            if (entry.Name:lower()==selector:lower() or entry.Name:sub(1, selector:len()):lower() == selector:lower()) or entry.uuid == selector then
+            if (entry.Name:lower()==selector:lower() or entry.Name:sub(1, selector:len()):lower() == selector:lower()) or entry.UUID == selector then
                 foundEntry = entry
                 entryIndex = i
                 break
@@ -231,16 +242,6 @@ local function getRealTime()
     return math.floor(filesystem.lastModified("/tmp/.time") / 1000)
 end
 
-local function strsplit(inputstr, sep)
-    if sep == nil then
-        sep = "%s"
-    end
-    local t={}
-    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
-        table.insert(t, str)
-    end
-    return t
-end
 --main code
 term.clear()
 
@@ -271,14 +272,14 @@ local scanNearbyButton = buttonapi.Button.new(dialButton.xPos+7, dialButton.yPos
 local closeGateButton = buttonapi.Button.new(scanNearbyButton.xPos+7, dialButton.yPos, 1, 1, "Close")
 
 databaseTab.func = function() 
-    gateOperator:write(databaseList.pos.x-3, databaseList.pos.y-2, "|Database: "..#databaseList.entries)
-    gateOperator:write(nearbyGatesList.pos.x-3, nearbyGatesList.pos.y-2, "|Nearby: "..#nearbyGatesList.entries)
     historyList:hide()
     databaseList:display()
     nearbyGatesList:display()
     dialButton:display()
     scanNearbyButton:display()
     closeGateButton:display()
+    gateOperator:write(databaseList.pos.x-3, databaseList.pos.y-2, "|Database: "..#databaseList.entries)
+    gateOperator:write(nearbyGatesList.pos.x-3, nearbyGatesList.pos.y-2, "|Nearby: "..#nearbyGatesList.entries)
 end
 
 historyTab.func = function() 
@@ -764,6 +765,7 @@ setAliases("dial", "d")
 setAliases("rename", "rn")
 setAliases("help", "cmds")
 
+local lastTimeProcessed = nil
 function processInput(usr, inputstr)
     local timeran = "["..os.date("%H:%M", getRealTime()).."]"
     if inputstr:sub(1,1) == settings.prefix then
@@ -864,8 +866,9 @@ local EventListeners = {
                     end
                 end
             elseif msg:sub(1, 14) == "gdsdialresult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
+                local existingEntry, _ = findEntry(sender)
                 lastReceived["dialresult"..sender] = timeReceived
-                processInput(nil, msg:sub(16))
+                processInput(nil, (existingEntry and existingEntry.Name or sender:sub(1,8)).." => "..msg:sub(16))
             end
         end
     end),

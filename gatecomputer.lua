@@ -59,11 +59,24 @@ local function readSettingsFile()
         --[[settings.modemRange = math.min(math.max(tonumber(settings.modemRange) or 16, 16), 400)
         modem.close(settings.networkPort)
         settings.networkPort = math.min(math.max(tonumber(settings.networkPort), 1),  65535)
-        modem.setStrength(settings.modemRange)
-        modem.open(settings.networkPort)]]
+        modem.setStrength(settings.modemRange)]]
     end
 end
 readSettingsFile()
+
+local function checkTime()
+    local f = io.open("/tmp/timecheck","w")
+    f:write("test")
+    f:close()
+    return filesystem.lastModified("/tmp/timecheck")
+end
+
+local function checkTPS(delay)
+    delay = delay or 1
+    local realTimeOld = checkTime()
+    os.sleep(delay)
+    return math.min(math.floor((20 * delay * 1000) / (checkTime() - realTimeOld)), 20)
+end
 
 if component.isAvailable("modem") then
     modem = component.modem
@@ -72,6 +85,7 @@ if component.isAvailable("modem") then
         modem.open(port)
         print("Opened port "..port)
     end
+    modem.setStrength(400)
 else
     print("Wireless modem not connected.")
     os.exit()
@@ -327,7 +341,7 @@ local EventListeners = {
                             end
                             print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
                             if engageResult == "stargate_engage" or engageResult == "dhd_engage" then
-                                send(sender, port, "gdsdialresult: Successfully dialed. "..(args.IDC and "Sending IDC." or ""))
+                                send(sender, port, "gdsdialresult: Successfully dialed. "..(args.IDC~=-1 and "Sending IDC." or ""))
                                 if type(args.IDC)=="number" then
                                     repeat 
                                         os.sleep()
@@ -336,39 +350,26 @@ local EventListeners = {
                                     print("Sent IDC.")
                                     local _, _, caller, msg = event.pull("code_respond")
                                     
-                                    if not msg or msg:sub(1, -4)~="Gate is open!" then
+                                    if not msg or msg:sub(1, -4)=="Waiting on computer..." then
+                                        print("Waiting for code response...")
                                         repeat 
-                                            os.sleep()
                                             _, _, caller, msg = event.pull("code_respond")
                                             msg = msg:sub(1, -4)
-                                        until msg=="Gate is open!"
+                                            os.sleep()
+                                        until msg and msg:sub(1, -4)~="Waiting on computer..."
                                     else
                                         msg = msg:sub(1, -4)
                                     end
-                                    print(msg)
+                                    print("IDC Response: "..msg)
                                     send(sender, port, "gdsdialresult: "..msg)
                                 end
                             else
                                 send(sender, port, "gdsdialresult: Dialing error: "..errormsg)
                             end
-                            --[[if tonumber(args.timer) and lastSuccessfulDial == newAddressStr then
-                                local closeGateAfter = tonumber(args.timer)
-                                if closeGateAfter >= 1 then
-                                    
-                                    local timerID = event.timer(0.1, function() --doesn't work inside of threads, seems it needs to be inside of main thread 
-                                        print("Attempting to close gate...")
-                                        print(stargate.dialedAddress == lastSuccessfulDial)--, stargate.getGateStatus()=="open")
-                                        if stargate.dialedAddress == lastSuccessfulDial and stargate.getGateStatus()=="open" then
-                                            stargate.disengageGate()
-                                        end
-                                    end)
-                                    print("Gate will close in "..closeGateAfter.." seconds.", timerID)
-                                end
-                            end]]
+                            
                         else
                             print("Address check failed. Error: "..addressCheck)
                         end
-                        
                     end)
                 elseif command == "close" then
                     lastReceived[sender] = lastReceived[sender] or currentTime-3
@@ -418,13 +419,18 @@ local EventListeners = {
             if hasIris~="NULL" then 
                 if settings.IDCs[code] then
                     print("IDC Valid:"..(code).." : "..settings.IDCs[code])
+                    repeat 
+                        os.sleep()
+                    until gateStatus == "open"
                     if stargate.getIrisState() == "CLOSED" then
                         stargate.toggleIris()
-                        stargate.sendMessageToIncoming("IDC Accepted! Opening iris...")
+                        --stargate.sendMessageToIncoming("IDC Accepted! Opening iris...")
                         repeat 
                             os.sleep()
                         until stargate.getIrisState() == "OPENED"
                     end
+                    print("Iris is open.")
+                    --os.sleep(1)
                     stargate.sendMessageToIncoming("Gate is open!")
                 else
                     stargate.sendMessageToIncoming("Invalid IDC.")
@@ -436,7 +442,7 @@ local EventListeners = {
                 repeat 
                     os.sleep()
                 until gateStatus == "open"
-                os.sleep(0.5)
+                os.sleep(1)
                 stargate.sendMessageToIncoming("Gate is open!")
             end
             threads.IDCHandler:kill()
