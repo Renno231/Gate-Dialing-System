@@ -78,6 +78,11 @@ local function checkTPS(delay)
     return math.min(math.floor((20 * delay * 1000) / (checkTime() - realTimeOld)), 20)
 end
 
+local function waitTicks(ticks)
+    ticks = ticks or 20
+    os.sleep(ticks/checkTPS(0.1) - 0.1)
+end
+
 if component.isAvailable("modem") then
     modem = component.modem
     print("Wireless modem UUID: "..modem.address)
@@ -112,6 +117,24 @@ if component.isAvailable("dhd") and gateType~="UN" then
 else
     print("DHD not connected. Speed dialing is unavailable.")
     canSpeedDial = false
+end
+
+local function sendIDC(code)
+    stargate.sendIrisCode(code) --args.IDC)
+    --print("Sent IDC.")
+    local _, _, caller, msg = event.pull("code_respond")
+    
+    if not msg or msg:sub(1, -4)=="Waiting on computer..." then
+        print("Waiting for code response...")
+        repeat 
+            _, _, caller, msg = event.pull("code_respond")
+            msg = msg:sub(1, -4)
+            os.sleep()
+        until msg and msg:sub(1, -4)~="Waiting on computer..."
+    else
+        msg = msg:sub(1, -4)
+    end
+    return msg
 end
 
 print("Starting gate dialer program.")
@@ -346,21 +369,19 @@ local EventListeners = {
                                     repeat 
                                         os.sleep()
                                     until gateStatus == "open"
-                                    stargate.sendIrisCode(args.IDC)
-                                    print("Sent IDC.")
-                                    local _, _, caller, msg = event.pull("code_respond")
-                                    
-                                    if not msg or msg:sub(1, -4)=="Waiting on computer..." then
-                                        print("Waiting for code response...")
-                                        repeat 
-                                            _, _, caller, msg = event.pull("code_respond")
-                                            msg = msg:sub(1, -4)
-                                            os.sleep()
-                                        until msg and msg:sub(1, -4)~="Waiting on computer..."
-                                    else
-                                        msg = msg:sub(1, -4)
-                                    end
-                                    print("IDC Response: "..msg)
+                                    local sentCount, msg = 0, "Gate did not respond to IDC."
+                                    repeat
+                                        if sentCount > 0 then 
+                                            if sentCount == 1 then 
+                                                print("Bad response, sending IDC again.")
+                                            end
+                                            os.sleep(1)
+                                        end
+                                        msg = sendIDC(args.IDC)
+                                        sentCount = sentCount + 1
+                                    until (msg ~= "Iris is busy!" and not msg:match("Code accepted")) or sentCount == 10 -- or msg == ""
+                                    print("IDC Response: "..msg.." took "..sentCount.." tries.")
+                                    waitTicks(20)
                                     send(sender, port, "gdsdialresult: "..msg)
                                 end
                             else
@@ -378,7 +399,7 @@ local EventListeners = {
                         gateStatus = stargate.getGateStatus()
                         if gateStatus == "open" then 
                             stargate.disengageGate()
-                            print("Resetting address...")
+                            print("Clearing address...")
                         elseif gateStatus == "dialing" then
                             stargate.abortDialing()
                             print("Aborting dialing...")
@@ -430,9 +451,10 @@ local EventListeners = {
                         until stargate.getIrisState() == "OPENED"
                     end
                     print("Iris is open.")
-                    --os.sleep(1)
+                    waitTicks(20)
                     stargate.sendMessageToIncoming("Gate is open!")
                 else
+                    waitTicks(20)
                     stargate.sendMessageToIncoming("Invalid IDC.")
                     if stargate.getIrisState() == "OPENED" then
                         stargate.toggleIris()
@@ -442,7 +464,7 @@ local EventListeners = {
                 repeat 
                     os.sleep()
                 until gateStatus == "open"
-                os.sleep(1)
+                waitTicks(20)
                 stargate.sendMessageToIncoming("Gate is open!")
             end
             threads.IDCHandler:kill()
