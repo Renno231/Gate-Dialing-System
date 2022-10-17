@@ -526,9 +526,9 @@ commands = {
                     }
                     table.insert(database, newEntry)
                     databaseList:addEntry(newEntry.Name)
-                    writeToDatabaseFile()
                     returnstr = "Successfully added entry "..newEntry.Name.."."
                 end
+                writeToDatabaseFile()
             else
                 returnstr = "Invalid address."
             end
