@@ -119,18 +119,19 @@ else
     canSpeedDial = false
 end
 
-local function sendIDC(code)
+local function sendIDC(code, timeout)
     stargate.sendIrisCode(code) --args.IDC)
     --print("Sent IDC.")
     local _, _, caller, msg = event.pull("code_respond")
-    
+    local pulls = 0
     if not msg or msg:sub(1, -4)=="Waiting on computer..." then
         print("Waiting for code response...")
         repeat 
             _, _, caller, msg = event.pull("code_respond")
             msg = msg:sub(1, -4)
             os.sleep()
-        until msg and msg:sub(1, -4)~="Waiting on computer..."
+            pulls = pulls + 1
+        until msg and msg:sub(1, -4)~="Waiting on computer..." or pulls == timeout
     else
         msg = msg:sub(1, -4)
     end
@@ -140,13 +141,13 @@ end
 print("Starting gate dialer program.")
 --send(sadd, 100, {gate.getGateType(), state, gate.dialedAddress, serial.serialize(gate.stargateAddress)})
 local function send(address, port, msg)
+    os.sleep(math.min(math.random()/5, 0.2))
     modem.send(address, port, tostring(msg))
-    os.sleep(0.05)
 end
 
 local function broadcast(port, msg)
+    os.sleep(math.min(math.random()/5, 0.2))
     modem.broadcast(port, tostring(msg))
-    os.sleep(0.05)
 end
 
 local function strsplit(inputstr, sep)
@@ -169,6 +170,16 @@ local EventListeners = {
         if stargate.getIrisState() == "OPENED" then
             stargate.toggleIris()
             print("Incoming wormhole.")
+            local returntbl = "gdsgate"..serialization.serialize({
+                gateType = gateType;
+                Address = {
+                    MW = stargate.stargateAddress.MILKYWAY;
+                    PG = stargate.stargateAddress.PEGASUS;
+                    UN = stargate.stargateAddress.UNIVERSE;
+                };
+                uuid = modem.address
+            })
+            threads.autosync = thread.create(broadcast, settings.listeningPorts[1], returntbl)
         end
     end),
 
@@ -198,7 +209,7 @@ local EventListeners = {
         if type(msg) == "string" then
             local currentTime = computer.uptime()
             if msg:sub(1, 4) == "gds{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then -- maybe send "username:{}" ?
-                print("Receiving instructions..."..msg:sub(4))
+                print("Receiving instructions...")
                 local msgdata = load("return "..msg:sub(4))() --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}; might need to wrap this in something like pcall
                 local command = msgdata.command
                 local args, user = msgdata.args, msgdata.user
@@ -235,10 +246,11 @@ local EventListeners = {
                         local newAddressStr = serialization.serialize(newAddress) --should be able to use table.concat
                         newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
                         if not newAddress then
-                            print("Invalid address: "..newAddressStr)
+                            print("Invalid address")
+                            send(sender, port, "gdsdialresult: Missing gate type for entry.")
                             os.exit()
                         else
-                            print("Found address: "..newAddressStr)
+                            print("Found address")
                         end
                         local lastGlyph = newAddress[#newAddress]
                         if lastGlyph ~= "Point of Origin" and lastGlyph~="Glyph 17" and lastGlyph~="Subido" then
@@ -253,37 +265,48 @@ local EventListeners = {
                         local currentDialedAddress = stargate.dialedAddress
                         local totalGlyphs = #newAddress
                         if totalGlyphs > 7 and type(addressCheck) == "table" then --see if it can be done with less glyphs
+                        print("Checking address for shortest amount of glyphs.")    
                             for check = 1, totalGlyphs-7 do
                                 local newCheckAddress = {}
                                 for i=1, totalGlyphs-2 do
                                     table.insert(newCheckAddress, newAddress[i])
                                 end
                                 table.insert(newCheckAddress, lastGlyph) --poi
-                                print("Checking address: "..table.concat(newCheckAddress,", "))
+                                
                                 local newCheck = stargate.getEnergyRequiredToDial(table.unpack(newCheckAddress))
                                 if type(newCheck) == "table" then
                                     newAddress = newCheckAddress
                                     totalGlyphs = #newAddress
                                     newAddressStr = serialization.serialize(newAddress)
                                     newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
-                                    print("Found shorter address:"..#newAddress)
+                                    print("Found shorter address: "..#newAddress)
                                 --else
                                 --    print("Shortest address is "..totalGlyphs.." glyphs.")
                                 --    break
                                 end
                             end
+                        elseif totalGlyphs < 7 then
+                            send(sender, port, "gdsdialresult: Not enough glyphs.")
+                            os.exit()
+                        else
+                            send(sender, port, "gdsdialresult: Address check failed.")
+                            os.exit()
                         end
-                        if currentDialedAddress~="[]" then --check if currently dialed glyphs match the new address
-                            if newAddressStr:sub(1, currentDialedAddress:len()-1) == string.gsub(currentDialedAddress,"]","") then
+                        if currentDialedAddress~="[]" and gateStatus~="open" then 
+                            local matchAddress = string.gsub(currentDialedAddress,"]","")
+                            local currentAddress = newAddressStr:gsub(',"',", "):gsub('"',""):sub(1, matchAddress:len())
+                            if currentAddress == matchAddress then
                                 print("Partial address match")
                                 local glyphsSplit = strsplit(currentDialedAddress:sub(2, currentDialedAddress:len()-1), ",")
                                 for i,v in ipairs (glyphsSplit) do
                                     if v:sub(1,1) == " " then v = v:sub(2) end
-                                    print("split",i,"|"..v.."|")
+                                    --print("split",i,"|"..v.."|")
+                                    --print(glyphStart, newAddress[i], v)
                                     if newAddress[i] == v then
                                         glyphStart = i + 1
                                     else
                                         glyphStart = 1
+                                        --print("broke")
                                         break
                                     end
                                 end
@@ -312,13 +335,13 @@ local EventListeners = {
                             end
                         end
                         print("Glyph starting index = "..tostring(glyphStart))
-                        if type(addressCheck)=="table" and stargate.getGateStatus() == "idle" then
+                        if stargate.getGateStatus() == "idle" then
                             local speedDial = (args.fast or false) and canSpeedDial
                             local engageResult, errormsg, dialStart = false, "", computer.uptime()
                             print("Valid address.")
                             print("canSpeedDial = "..tostring(canSpeedDial)..". args.fast = "..tostring(args.fast))
-                            for i=glyphStart, totalGlyphs do
-                                print("> Glyph "..i..": "..newAddress[i])
+                            for i = glyphStart, totalGlyphs do
+                                print("> Glyph "..i)
                                 if speedDial then
                                     if gateType~="MW" then
                                         repeat 
@@ -364,7 +387,7 @@ local EventListeners = {
                             end
                             print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
                             if engageResult == "stargate_engage" or engageResult == "dhd_engage" then
-                                send(sender, port, "gdsdialresult: Successfully dialed. "..(args.IDC~=-1 and "Sending IDC." or ""))
+                                send(sender, port, "gdsdialresult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
                                 if type(args.IDC)=="number" then
                                     repeat 
                                         os.sleep()
@@ -381,7 +404,7 @@ local EventListeners = {
                                         sentCount = sentCount + 1
                                     until (msg ~= "Iris is busy!" and not msg:match("Code accepted")) or sentCount == 10 -- or msg == ""
                                     print("IDC Response: "..msg.." took "..sentCount.." tries.")
-                                    waitTicks(20)
+                                    waitTicks(10)
                                     send(sender, port, "gdsdialresult: "..msg)
                                 end
                             else
@@ -393,11 +416,15 @@ local EventListeners = {
                         end
                     end)
                 elseif command == "close" then
-                    lastReceived[sender] = lastReceived[sender] or currentTime-3
-                    if currentTime - lastReceived[sender] > 2 then
-                        lastReceived[sender] = currentTime
+                    lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-3
+                    if currentTime - lastReceived[userprocessKey] > 2 then
+                        lastReceived[userprocessKey] = currentTime
+                        
                         gateStatus = stargate.getGateStatus()
-                        if gateStatus == "open" then 
+                        if threads.dialing then 
+                            threads.dialing:kill() 
+                            print("Killed dialing thread.")
+                        elseif gateStatus == "open" then 
                             stargate.disengageGate()
                             print("Clearing address...")
                         elseif gateStatus == "dialing" then
@@ -405,14 +432,12 @@ local EventListeners = {
                             print("Aborting dialing...")
                         end
                     end
-                elseif command == "pause" then
-                    if threads.dialing then threads.dialing:kill() end
                 elseif command == "iris" then
                     --todo
                 elseif command == "query" then
-                    lastReceived[sender] = lastReceived[sender] or currentTime-6
-                    if currentTime - lastReceived[sender] > 5 then
-                        lastReceived[sender] = currentTime
+                    lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-6
+                    if currentTime - lastReceived[userprocessKey] > 5 then
+                        lastReceived[userprocessKey] = currentTime
                         local returntbl = "gdsgate"..serialization.serialize({
                             gateType = gateType;
                             Address = {
