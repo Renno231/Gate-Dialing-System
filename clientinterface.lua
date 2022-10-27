@@ -381,13 +381,13 @@ commands = {
         elseif args[2] == "speed" then
             if args[3] == "on" or args[3] == "true" then
                 settings.speedDial = true
-                returnstr = "Set speed dial to "..tostring(settings.SpeedDial)
+                returnstr = "Set speed dial to "..tostring(settings.speedDial)
             elseif args[3] == "off" or args[3] == "false" then
                 settings.speedDial = false
-                returnstr = "Set speed dial to "..tostring(settings.SpeedDial)
+                returnstr = "Set speed dial to "..tostring(settings.speedDial)
             elseif args[3] == nil then
-                settings.speedDial = not settings.SpeedDial
-                returnstr = "Toggling speed dial to "..tostring(settings.SpeedDial)
+                settings.speedDial = not settings.speedDial
+                returnstr = "Toggling speed dial to "..tostring(settings.speedDial)
             else
                 returnstr = "'"..args[3].."' is not a valid state for speed"
             end
@@ -768,17 +768,18 @@ setAliases("help", "cmds")
 local lastTimeProcessed = nil
 function processInput(usr, inputstr)
     local timeran = "["..os.date("%H:%M", getRealTime()).."]"
+    if timeran ~= lastTimeProcessed then
+        lastTimeProcessed = timeran
+    else
+        timeran = "       "
+    end
     if inputstr:sub(1,1) == settings.prefix then
         local chunks = strsplit(inputstr, settings.prefix)
         for i, chunk in next, chunks do
             local args = strsplit(chunk, " ")
             local cmdfunction = commands[args[1]]
-            local outputstring = " cmd: "..chunk
-            if i == 1 then 
-                outputstring = timeran..outputstring 
-            else
-                outputstring = "       "..outputstring  
-            end
+            local outputstring = timeran.." cmd: "..chunk
+            
             recordToOutput(outputstring)
             if cmdfunction then
                 args[1] = nil --removing the command name
@@ -813,10 +814,10 @@ local EventListeners = {
                     lastReceived[sender] = lastReceived[sender] or timeReceived-6
                     if timeReceived - lastReceived[sender] > 5 then
                         lastReceived[sender] = timeReceived
-                        recordToOutput("Receiving address data from.."..sender.." of type "..newGateType)
+                        --recordToOutput("Receiving address data from.."..sender:sub(1,4).." of type "..newGateType)
                         local existingEntry, _ = findEntry(sender) or findEntry(newAddress, "MW") or findEntry(newAddress, "PG") or findEntry(newAddress, "UN")
                         if existingEntry then
-                            local returnstr = "Found existing entry "..existingEntry.Name.." from scan."
+                            local returnstr = existingEntry.Name
                             if existingEntry.UUID ~= sender then
                                 existingEntry.UUID = sender
                                 returnstr = returnstr.." Updated UUID."
@@ -841,7 +842,7 @@ local EventListeners = {
                                 end
                             end
                             writeToDatabaseFile()
-                            recordToOutput(returnstr)
+                            processInput("  => Nearby gate", returnstr)
                         else
                             local newEntry = {
                                 Name = msgdata.Name or sender;
@@ -868,7 +869,7 @@ local EventListeners = {
             elseif msg:sub(1, 14) == "gdsdialresult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
                 local existingEntry, _ = findEntry(sender)
                 lastReceived["dialresult"..sender] = timeReceived
-                processInput(nil, (existingEntry and existingEntry.Name or sender:sub(1,8)).." => "..msg:sub(16))
+                processInput((existingEntry and existingEntry.Name or sender:sub(1,8)), msg:sub(16))
             end
         end
     end),
