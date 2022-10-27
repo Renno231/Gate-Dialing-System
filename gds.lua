@@ -30,8 +30,6 @@ elseif (opts.c or opts.g) then
         shell.execute("wget -f https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/installer.lua")
     end
     shell.execute("/home/installer.lua "..options)
-elseif opts.i then --import AGS addresses
-
 elseif opts.d then --delete, need to add detection for autorun in /home/.shrc
     for i, address in ipairs (gdsFiles) do
         if filesystem.exists(address) then
@@ -40,32 +38,18 @@ elseif opts.d then --delete, need to add detection for autorun in /home/.shrc
     end
 end
 if opts.a then --autostart
-    if filesystem.exists("/home/.shrc") then
-        local line, foundGDSAuto = nil, false
-        local file, reason = io.open("/home/.shrc")
-        repeat
-            local line = file["readLine"](file, false)
-            if line then
-                foundGDSAuto = line=="/bin/gds.lua"
-            end
-        until not line or foundGDSAuto
-        file:close()
-        if not foundGDSAuto then
-            file, reason = io.open("/home/.shrc", "a")
-            file:write("/bin/gds.lua")
-            file:close()
-            print("Created autorun for GDS.")
-        else
-            print("GDS is already autorun.")
-        end
-    else
-        local file, reason = io.open("/home/.shrc", "w")
-        file:write("/bin/gds.lua")
-        file:close()
-        print("Created autorun for GDS.")
+    local autorunFile = [[function start(msg)
+local shell = require("shell") 
+    do 
+        shell.execute("/gds/%s.lua") 
     end
-    print("To remove GDS from autorun, edit the /home/.shrc file and remove the line with /bin/gds.lua")
-end
+end]] 
+    local file = io.open("/etc/rc.d/gds.lua", "w") 
+    file:write(autorunFile:format(filesystem.exists("/gds/clientinterface.lua") and "clientinterface" or "gatecomputer")) 
+    file:close()
+    shell.execute("rc gds enable")
+end     
+
 if filesystem.exists("/gds/clientinterface.lua") then
     shell.execute("/gds/clientinterface.lua")
 elseif filesystem.exists("/gds/gatecomputer.lua") then
@@ -73,4 +57,3 @@ elseif filesystem.exists("/gds/gatecomputer.lua") then
 else
     io.stderr:write("GDS isn't installed.\n")
 end
-  
