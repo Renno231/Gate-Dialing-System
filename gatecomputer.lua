@@ -170,6 +170,7 @@ local EventListeners = {
         if stargate.getIrisState() == "OPENED" then
             stargate.toggleIris()
             print("Incoming wormhole.")
+            waitTicks(5)
             local returntbl = "gdsgate"..serialization.serialize({
                 gateType = gateType;
                 Address = {
@@ -400,14 +401,15 @@ local EventListeners = {
                                             end
                                             os.sleep(1)
                                         end
-                                        msg = sendIDC(args.IDC)
+                                        msg = sendIDC(args.IDC, 20)
                                         sentCount = sentCount + 1
                                     until (msg ~= "Iris is busy!" and not msg:match("Code accepted")) or sentCount == 10 -- or msg == ""
                                     print("IDC Response: "..msg.." took "..sentCount.." tries.")
-                                    waitTicks(10)
+                                    waitTicks(15)
                                     send(sender, port, "gdsdialresult: "..msg)
                                 end
                             else
+                                waitTicks(15)
                                 send(sender, port, "gdsdialresult: Dialing error: "..errormsg)
                             end
                             
