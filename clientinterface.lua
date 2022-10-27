@@ -785,10 +785,10 @@ function processInput(usr, inputstr)
                 args[1] = nil --removing the command name
                 local succ, returndata = pcall(cmdfunction, table.unpack(args)) --could do returns here and deal with the output buffer, but not really necessary
                 if returndata then
-                    recordToOutput("          => "..returndata)
+                    recordToOutput("          ⤷ "..returndata)
                 end
             else
-                recordToOutput("          => invalid command.")
+                recordToOutput("          ⤷ invalid command.")
             end
         end
    else
@@ -842,7 +842,7 @@ local EventListeners = {
                                 end
                             end
                             writeToDatabaseFile()
-                            processInput("  => Nearby gate", returnstr)
+                            processInput("  ⤷ Nearby gate", returnstr)
                         else
                             local newEntry = {
                                 Name = msgdata.Name or sender;
@@ -869,7 +869,7 @@ local EventListeners = {
             elseif msg:sub(1, 14) == "gdsdialresult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
                 local existingEntry, _ = findEntry(sender)
                 lastReceived["dialresult"..sender] = timeReceived
-                processInput((existingEntry and existingEntry.Name or sender:sub(1,8)), msg:sub(16))
+                recordToOutput("          ⤷ "..msg:sub(16)) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
             end
         end
     end),
