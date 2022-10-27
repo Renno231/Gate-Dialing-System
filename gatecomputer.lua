@@ -238,7 +238,7 @@ local EventListeners = {
                     else
                         lastReceived[userprocessKey] = currentTime
                     end
-                    if threads.dialing then threads.dialing:kill() end --could add a check to see if the partial address dialed matches the current one and continue from there
+                    if threads.dialing then threads.dialing:kill() threads.dialing = nil end --could add a check to see if the partial address dialed matches the current one and continue from there
                     threads.dialing = thread.create(function() 
                         -- put this in a new thread
                         print("Attempting to dial address...\nCurrent gate type is "..gateType)
@@ -423,6 +423,7 @@ local EventListeners = {
                         gateStatus = stargate.getGateStatus()
                         if threads.dialing then 
                             threads.dialing:kill() 
+                            threads.dialing = nil
                             print("Killed dialing thread.")
                         elseif gateStatus == "open" then 
                             stargate.disengageGate()
