@@ -431,6 +431,8 @@ commands = {
             returnstr = "Unused memory: "..tostring(math.floor((computer.freeMemory()/computer.totalMemory())*100)).."%"
         elseif args[2] == "radius" or args[2] == "range" then
             returnstr = "Current modem range is "..settings.modemRange
+        elseif args[2] == "idc" and args[3] then
+
         elseif args[2] then
             returnstr = "Invalid sub-command: "..tostring(args[2])
         end
@@ -462,7 +464,9 @@ commands = {
                     if ge.IDC ~= nil then
                         local tmpidc = tonumber(ge.IDC)
                         ge.IDC = nil
-                        if tmpidc then ge.IDCs[tmpidc] = "unknown" end
+                        if tmpidc then 
+                            ge.IDCs[settings.lastUser or "unknown"] = tmpidc 
+                        end
                     end
                     ge.AdminOnly = nil
                     ge.fave = nil
@@ -824,7 +828,7 @@ local EventListeners = {
                             end
                             for glyphset, adrs in pairs (newAddress) do
                                 if glyphset == "MW" or glyphset == "PG" or glyphset == "UN" then
-                                    if existingEntry.Address[glyphset] then
+                                    if existingEntry.Address[glyphset] then --need to add check to update address
                                         if #adrs < 10 then
                                             if #adrs > #existingEntry.Address[glyphset] then
                                                 existingEntry.Address[glyphset] = adrs
@@ -868,8 +872,10 @@ local EventListeners = {
                 end
             elseif msg:sub(1, 14) == "gdsdialresult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
                 local existingEntry, _ = findEntry(sender)
-                lastReceived["dialresult"..sender] = timeReceived
-                recordToOutput("          ⤷ "..msg:sub(16)) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
+                if existingEntry then
+                    lastReceived["dialresult"..sender] = timeReceived
+                    recordToOutput("          ⤷ "..msg:sub(16)) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
+                end
             end
         end
     end),
