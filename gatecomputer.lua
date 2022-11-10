@@ -21,10 +21,11 @@ local settings = {
     allowedList = {};
     IDCs = {};
     listeningPorts = {160};
+    networkAdminPassword = false;
+    networkAdminUUID = false;
+    isPrivate = false;
 }
-local isPrivate = false --determines whether or not the sender username is checked against the allowed list
-local networkAdminUUID = nil
-local networkAdminPassword = "password" --idk about this one yet
+
 local canSpeedDial = true
 local commandLog = {} --table.insert(commandLog, sender.." "..self.command)
 local threads = {} --threads.example = thread.create(function() end); threads.example:kill(); threads.example:suspend()
@@ -120,22 +121,19 @@ else
 end
 
 local function sendIDC(code, timeout)
-    stargate.sendIrisCode(code) --args.IDC)
-    --print("Sent IDC.")
-    local _, _, caller, msg = event.pull("code_respond")
-    local pulls = 0
+    stargate.sendIrisCode(code)
+    local _, _, caller, msg = event.pull(1, "code_respond")
+    local pulls = 1
+    timeout = timeout -1
     if not msg or msg:sub(1, -4)=="Waiting on computer..." then
         print("Waiting for code response...")
         repeat 
-            _, _, caller, msg = event.pull("code_respond")
-            msg = msg:sub(1, -4)
-            os.sleep()
+            --os.sleep()
+            _, _, caller, msg = event.pull(1, "code_respond")
             pulls = pulls + 1
-        until msg and msg:sub(1, -4)~="Waiting on computer..." or pulls == timeout
-    else
-        msg = msg:sub(1, -4)
+        until (msg and msg:sub(1, -4)~="Waiting on computer...") or pulls > timeout
     end
-    return msg
+    return (pulls > timeout or msg==nil) and "No IDC response." or msg:sub(1, -4) 
 end
 
 print("Starting gate dialer program.")
@@ -219,7 +217,7 @@ local EventListeners = {
                 print("User: ",user)
                 if type(user) == "table" then
                     if type(user.name) == "string" then
-                        if isPrivate then
+                        if settings.isPrivate then
                             canProcess = settings.allowedList[user.name]
                         else
                             canProcess = true
@@ -401,7 +399,8 @@ local EventListeners = {
                                             end
                                             os.sleep(1)
                                         end
-                                        msg = sendIDC(args.IDC, 20)
+                                        
+                                        msg = sendIDC(args.IDC, 10)
                                         sentCount = sentCount + 1
                                     until (msg ~= "Iris is busy!" and not msg:match("Code accepted")) or sentCount == 10 -- or msg == ""
                                     print("IDC Response: "..msg.." took "..sentCount.." tries.")
@@ -421,19 +420,22 @@ local EventListeners = {
                     lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-3
                     if currentTime - lastReceived[userprocessKey] > 2 then
                         lastReceived[userprocessKey] = currentTime
-                        
+                        local returnstr
                         gateStatus = stargate.getGateStatus()
                         if gateStatus == "open" then 
                             stargate.disengageGate()
-                            print("Clearing address...")
+                            returnstr="Clearing address..."
                         end
                         if threads.dialing and threads.dialing:status()=="running" then 
                             threads.dialing:kill()
-                            print("Killed dialing thread.")
+                            returnstr="Killed dialing thread."
                         elseif stargate.dialedAddress~="[]" then
                             stargate.abortDialing()
-                            print("Aborting dialing...")
+                            returnstr="Aborting dialing..."
                         end
+                        print(returnstr)
+                        waitTicks(5)
+                        send(sender, port, "gdsdialresult: " .. returnstr)
                     end
                 elseif command == "iris" then
                     --todo
