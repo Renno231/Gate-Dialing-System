@@ -287,7 +287,7 @@ local EventListeners = {
                         elseif totalGlyphs < 7 then
                             send(sender, port, "gdsdialresult: Not enough glyphs.")
                             os.exit()
-                        else
+                        elseif type(addressCheck) ~= "table" then
                             send(sender, port, "gdsdialresult: Address check failed.")
                             os.exit()
                         end
