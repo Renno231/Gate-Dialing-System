@@ -20,6 +20,7 @@ local term = require("term")
 local unicode = require("unicode")
 local serialization = require("serialization")
 local filesystem = require("filesystem")
+local textLib = require("text")
 local modem = component.modem
 local gpu = component.gpu
 
@@ -54,7 +55,7 @@ local settings = { --add a read and save ability
     nearbyScanRate = 10; -- in seconds, only relevant if the above is true
     outputBufferSize = 120; --need to add scrolling
     commandBufferSize = 20; -- not yet implimented
-    speedDial = true;
+    dialSpeed = 10;
     lastDataBaseEntry = nil; --string; for smart loading of previous usage
     lastNearbyEntry = nil; --  ^ same 
     defaultGateTimeout = 30;
@@ -76,12 +77,12 @@ local function send(address, port, msg)
 end
 
 local function gdssend(address, port, msg, cmdprefix)
-    modem.send(address, port, "gds"..(cmdprefix or "")..serialization.serialize(msg))
+    modem.send(address, port, "gdswakeup", "gds"..(cmdprefix or "")..serialization.serialize(msg))
 end
 
 local lastBroadcasted = 0
 local function broadcast(port, msg)
-    modem.broadcast(port, tostring(msg))
+    modem.broadcast(port, "gdswakeup", tostring(msg))
     lastBroadcasted = computer.uptime()
     os.sleep(0.05)
 end
@@ -317,10 +318,13 @@ function recordToOutput(...)
             if type(arg)~="string" then
                 arg = tostring(arg)
             end
+            --arg = textLib.wrap(arg, windowWidth, windowWidth)
             if arg:len() > windowWidth then
-                for i=1, math.floor(arg:len()/windowWidth)+1 do
-                    table.insert(outputBuffer, 1, arg:sub((i-1)* windowWidth + 1, i*windowWidth))
-                end
+                local wrapped, success
+                repeat 
+                    wrapped, arg, success = textLib.wrap(arg, windowWidth+3, windowWidth+3)
+                    table.insert(outputBuffer, 1, wrapped)
+                until not success
             else
                 table.insert(outputBuffer, 1, arg)
             end 
@@ -379,17 +383,19 @@ commands = {
                 end
             end
         elseif args[2] == "speed" then
-            if args[3] == "on" or args[3] == "true" then
-                settings.speedDial = true
-                returnstr = "Set speed dial to "..tostring(settings.speedDial)
-            elseif args[3] == "off" or args[3] == "false" then
-                settings.speedDial = false
-                returnstr = "Set speed dial to "..tostring(settings.speedDial)
-            elseif args[3] == nil then
-                settings.speedDial = not settings.speedDial
-                returnstr = "Toggling speed dial to "..tostring(settings.speedDial)
+            local newspeed = tonumber(args[3])
+            if newspeed then
+                if newspeed < 0 then
+                    newspeed = 0
+                end
+                returnstr = "Minimum speed is 0. Dial speed set to "..tostring(newspeed).."."
+                settings.dialSpeed = newspeed
+            elseif args[3] == "normal" or args[3] == nil then
+                newspeed = 10
+                returnstr = "Dial speed set to "..tostring(newspeed).."."
+                settings.dialSpeed = newspeed
             else
-                returnstr = "'"..args[3].."' is not a valid state for speed"
+                returnstr = "Speed must be a number or 'normal' which is 10 seconds."
             end
         end
         writeSettingsFile()
@@ -648,7 +654,6 @@ commands = {
             local isInNearby = nearbyGatesList:getIndexFromName(gateA.Name)
             gateA.Name = newName
             if isInNearby then
-                returnstr = "Renamed entry in nearbylist"
                 nearbyGatesList.entries[isInNearby] = newName
                 nearbyGatesList:display()
             end
@@ -662,7 +667,7 @@ commands = {
     dial = function(...) --need to add the 4th argument as a timer to close the gate, -1 signifies as long as possible, otherwise its in seconds default = 30
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local cmdPayload = {command = "dial", args = {fast = settings.speedDial, timer = tonumber(args[4])}, user = {name = tostring(settings.lastUser)}}
+        local cmdPayload = {command = "dial", args = {speed = settings.dialSpeed, timer = tonumber(args[4])}, user = {name = tostring(settings.lastUser)}}
         local gateA, gateB
         if args[2] and args[3] then
             gateA = findEntry(args[2])
@@ -714,12 +719,22 @@ commands = {
     end;
     sync = function(...)
         local args = {...}
-        local returnstr = "Sync is not yet implimented" --"Insufficient arguments."
+        local returnstr = "Sync is not yet implimented." --"Insufficient arguments."
         --for address or database syncing
         return returnstr
     end;
     help = function(...)
-        return "Help is not yet implimented."
+        local args = {...}
+        local returnstr
+        if args[2] and commandDescriptions[args[2]:lower()] then
+            returnstr = args[2]..": "..commandDescriptions[args[2]:lower()]
+        else
+            returnstr = "To see a commands usage do ;help followed by the command name. Available commands are "
+            for commandname, desc in pairs (commandDescriptions) do
+                returnstr = returnstr..commandname..", "
+            end
+        end
+        return returnstr
     end;
     edit = function(...)
         local args = {...}
@@ -740,8 +755,13 @@ commands = {
                         cmdbar:display()
                     end)
                     returnstr = "Editing entry "..gateA.Name
-                elseif args[4]=="idc" then
-
+                elseif args[4]=="idc" then --5 = key
+                    returnstr = "Editing entry IDC "..gateA.Name
+                    event.timer(0, function() 
+                        cmdbar.text = ";add idc "..gateAIndex.." "..(gateA.IDCs[args[5] or settings.lastUser] or "1234").." "..(args[5] or settings.lastUser)
+                        cmdbar:setCursor(16)
+                        cmdbar:display()
+                    end)
                 end
                 --cmdbar.text  = 
             end
@@ -772,7 +792,7 @@ setAliases("help", "cmds")
 local lastTimeProcessed = nil
 function processInput(usr, inputstr)
     local timeran = "["..os.date("%H:%M", getRealTime()).."]"
-    if timeran ~= lastTimeProcessed then
+    if timeran ~= lastTimeProcessed or #outputBuffer==0 then
         lastTimeProcessed = timeran
     else
         timeran = "       "
@@ -811,7 +831,8 @@ local EventListeners = {
         local timeReceived = computer.uptime()
         if type(msg) == "string" then
             if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
-                local msgdata = load("return "..msg:sub(8))() --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
+                local validPayload, msgdata = pcall(load("return "..msg:sub(8))) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
+                if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
                 local newGateType = msgdata.gateType
                 local newAddress = msgdata.Address
                 if msgdata.uuid == sender then
@@ -870,11 +891,11 @@ local EventListeners = {
                         end
                     end
                 end
-            elseif msg:sub(1, 14) == "gdsdialresult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
+            elseif msg:sub(1, 17) == "gdsCommandResult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
                 local existingEntry, _ = findEntry(sender)
                 if existingEntry then
                     lastReceived["dialresult"..sender] = timeReceived
-                    recordToOutput("          ⤷ "..msg:sub(16)) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
+                    recordToOutput("          ⤷ "..existingEntry.Name..": "..msg:sub(19)) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
                 end
             end
         end
@@ -989,6 +1010,7 @@ end
 gateOperator:selectTab("Database")
 scanNearby() --first scan to check where things are
 --main loop to keep it from returning to the terminal
+
 while isRunning and HadNoError do
     os.sleep(0.25)
 end

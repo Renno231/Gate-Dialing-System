@@ -24,15 +24,67 @@ local settings = {
     networkAdminPassword = false;
     networkAdminUUID = false;
     isPrivate = false;
+    autoSyncToIncoming = true;
 }
 
 local canSpeedDial = true
+local mustWaitUntilIdle = false
 local commandLog = {} --table.insert(commandLog, sender.." "..self.command)
 local threads = {} --threads.example = thread.create(function() end); threads.example:kill(); threads.example:suspend()
 local lastReceived = {} -- for wireless messages
 local gateStatus = "idle"
 local lastSuccessfulDial = nil
+local jsgVersion
 term.clear()
+
+if component.isAvailable("modem") then
+    modem = component.modem
+    print("Wireless modem UUID: "..modem.address)
+    for i, port in ipairs (settings.listeningPorts) do
+        modem.open(port)
+        print("Opened port "..port)
+    end
+    modem.setStrength(400)
+    modem.setWakeMessage("gdswakeup")
+else
+    print("Wireless modem not connected.")
+    os.exit()
+end
+
+if component.isAvailable("redstone") then
+    component.redstone.setWakeThreshold(1)
+    print("Set redstone wake threshold to "..(component.redstone.getWakeThreshold()))
+end
+
+local gatedataTable
+if component.isAvailable("stargate") then
+    stargate = component.stargate
+    gateType = stargate.getGateType():sub(1,1)
+    gateType = (gateType == "M" and "MW") or (gateType == "P" and "PG") or (gateType == "U" and "UN")
+    
+    gatedataTable = "gdsgate"..serialization.serialize({
+        gateType = gateType;
+        Address = {
+            MW = stargate.stargateAddress.MILKYWAY;
+            PG = stargate.stargateAddress.PEGASUS;
+            UN = stargate.stargateAddress.UNIVERSE;
+        };
+        uuid = modem.address
+    })
+    jsgVersion = tonumber(stargate.getJSGVersion():sub(-8):gsub("[.]",""))
+    mustWaitUntilIdle = jsgVersion > 41103
+else
+    print("Stargate not connected")
+    os.exit()
+end
+
+if component.isAvailable("dhd") and gateType~="UN" then 
+    dhd = component.dhd
+    print("DHD found. Speed dialing is available.")
+else
+    print("DHD not connected. Speed dialing is unavailable.")
+    canSpeedDial = false
+end
 
 local function writeSettingsFile()
     local file = io.open(SettingsFile, "w")
@@ -72,11 +124,11 @@ local function checkTime()
     return filesystem.lastModified("/tmp/timecheck")
 end
 
-local function checkTPS(delay)
-    delay = delay or 1
+local function checkTPS(waitDelay)
+    waitDelay = waitDelay or 1
     local realTimeOld = checkTime()
-    os.sleep(delay)
-    return math.min(math.floor((20 * delay * 1000) / (checkTime() - realTimeOld)), 20)
+    os.sleep(waitDelay)
+    return math.min(math.floor((20 * waitDelay * 1000) / (checkTime() - realTimeOld)), 20)
 end
 
 local function waitTicks(ticks)
@@ -84,40 +136,10 @@ local function waitTicks(ticks)
     os.sleep(ticks/checkTPS(0.1) - 0.1)
 end
 
-if component.isAvailable("modem") then
-    modem = component.modem
-    print("Wireless modem UUID: "..modem.address)
-    for i, port in ipairs (settings.listeningPorts) do
-        modem.open(port)
-        print("Opened port "..port)
-    end
-    modem.setStrength(400)
-else
-    print("Wireless modem not connected.")
-    os.exit()
-end
-
-if component.isAvailable("stargate") then
-    stargate = component.stargate
-    gateType = stargate.getGateType()
-    if gateType:sub(1,1) == "M" then 
-        gateType = "MW"
-    elseif gateType:sub(1,1) == "P" then 
-        gateType = "PG"
-    elseif gateType:sub(1,1) == "U" then 
-        gateType = "UN"
-    end
-else
-    print("Stargate not connected")
-    os.exit()
-end
-
-if component.isAvailable("dhd") and gateType~="UN" then 
-    dhd = component.dhd
-    print("DHD found. Speed dialing is available.")
-else
-    print("DHD not connected. Speed dialing is unavailable.")
-    canSpeedDial = false
+local function waitUntilIdle(step)
+    repeat 
+        os.sleep(step)
+    until stargate.getGateStatus() == "idle"
 end
 
 local function sendIDC(code, timeout)
@@ -168,17 +190,6 @@ local EventListeners = {
         if stargate.getIrisState() == "OPENED" then
             stargate.toggleIris()
             print("Incoming wormhole.")
-            waitTicks(5)
-            local returntbl = "gdsgate"..serialization.serialize({
-                gateType = gateType;
-                Address = {
-                    MW = stargate.stargateAddress.MILKYWAY;
-                    PG = stargate.stargateAddress.PEGASUS;
-                    UN = stargate.stargateAddress.UNIVERSE;
-                };
-                uuid = modem.address
-            })
-            threads.autosync = thread.create(broadcast, settings.listeningPorts[1], returntbl)
         end
     end),
 
@@ -204,12 +215,13 @@ local EventListeners = {
     
     end),
 
-    modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg)
+    modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, wakeup, msg, ...)
         if type(msg) == "string" then
             local currentTime = computer.uptime()
             if msg:sub(1, 4) == "gds{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then -- maybe send "username:{}" ?
                 print("Receiving instructions...")
-                local msgdata = load("return "..msg:sub(4))() --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}; might need to wrap this in something like pcall
+                local validPayload, msgdata = pcall(load("return "..msg:sub(4))) --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}; might need to wrap this in something like pcall
+                if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
                 local command = msgdata.command
                 local args, user = msgdata.args, msgdata.user
                 local userprocessKey = command..sender --useful for tracking actions by a specific user instead of total interaction by a specific user
@@ -246,7 +258,7 @@ local EventListeners = {
                         newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
                         if not newAddress then
                             print("Invalid address")
-                            send(sender, port, "gdsdialresult: Missing gate type for entry.")
+                            send(sender, port, "gdsCommandResult: Missing gate type for entry.")
                             os.exit()
                         else
                             print("Found address")
@@ -263,32 +275,36 @@ local EventListeners = {
                         local glyphStart, hasEngagedGate = 1, false
                         local currentDialedAddress = stargate.dialedAddress
                         local totalGlyphs = #newAddress
-                        if totalGlyphs > 7 and type(addressCheck) == "table" then --see if it can be done with less glyphs
-                        print("Checking address for shortest amount of glyphs.")    
-                            for check = 1, totalGlyphs-7 do
-                                local newCheckAddress = {}
-                                for i=1, totalGlyphs-2 do
-                                    table.insert(newCheckAddress, newAddress[i])
-                                end
-                                table.insert(newCheckAddress, lastGlyph) --poi
-                                
-                                local newCheck = stargate.getEnergyRequiredToDial(table.unpack(newCheckAddress))
-                                if type(newCheck) == "table" then
-                                    newAddress = newCheckAddress
-                                    totalGlyphs = #newAddress
-                                    newAddressStr = serialization.serialize(newAddress)
-                                    newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
-                                    print("Found shorter address: "..#newAddress)
-                                --else
-                                --    print("Shortest address is "..totalGlyphs.." glyphs.")
-                                --    break
+                        if type(addressCheck) == "table"  then --not enough power
+                            if not addressCheck.canOpen then
+                                print("Not enough power to dial")
+                                send(sender, port, "gdsCommandResult: Insufficient power to dial. Requires "..addressCheck.open.." RF to open and "..addressCheck.keepAlive.." RF/t to maintain.")
+                                os.exit()
+                            end
+                            if totalGlyphs > 7 then
+                                for check = 1, totalGlyphs-7 do
+                                    local newCheckAddress = {}
+                                    for i=1, totalGlyphs-2 do
+                                        table.insert(newCheckAddress, newAddress[i])
+                                    end
+                                    table.insert(newCheckAddress, lastGlyph) --poi
+                                    
+                                    local newCheck = stargate.getEnergyRequiredToDial(table.unpack(newCheckAddress))
+                                    if type(newCheck) == "table" then
+                                        newAddress = newCheckAddress
+                                        totalGlyphs = #newAddress
+                                        newAddressStr = serialization.serialize(newAddress)
+                                        newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
+                                        print("Found shorter address: "..#newAddress)
+                                    --else
+                                    --    print("Shortest address is "..totalGlyphs.." glyphs.")
+                                    --    break
+                                    end
                                 end
                             end
-                        elseif totalGlyphs < 7 then
-                            send(sender, port, "gdsdialresult: Not enough glyphs.")
-                            os.exit()
-                        elseif type(addressCheck) ~= "table" then
-                            send(sender, port, "gdsdialresult: Address check failed.")
+                        else
+                            send(sender, port, "gdsCommandResult: Address check failed.")
+                            print("Address check failed.")
                             os.exit()
                         end
                         if currentDialedAddress~="[]" and gateStatus~="open" then 
@@ -328,24 +344,21 @@ local EventListeners = {
                             end
                             if gateStatus~="idle" then
                                 print("Waiting for gate to finish actions...")
-                                repeat 
-                                    os.sleep()
-                                until stargate.getGateStatus() == "idle"
+                                waitUntilIdle()
                             end
                         end
                         print("Glyph starting index = "..tostring(glyphStart))
                         if stargate.getGateStatus() == "idle" then
-                            local speedDial = (args.fast or false) and canSpeedDial
+                            local speedDial = (args.speed and args.speed < 1 or false) and canSpeedDial
+                            local delayTime = args.speed and args.speed / totalGlyphs + 1
                             local engageResult, errormsg, dialStart = false, "", computer.uptime()
                             print("Valid address.")
-                            print("canSpeedDial = "..tostring(canSpeedDial)..". args.fast = "..tostring(args.fast))
+                            print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed))
                             for i = glyphStart, totalGlyphs do
                                 print("> Glyph "..i)
                                 if speedDial then
                                     if gateType~="MW" then
-                                        repeat 
-                                            os.sleep(0.5)
-                                        until stargate.getGateStatus() == "idle"
+                                        waitUntilIdle(0.5)
                                     end
                                     _, engageResult, errormsg = dhd.pressButton(newAddress[i])
                                     if engageResult ~= "dhd_pressed" then
@@ -356,16 +369,13 @@ local EventListeners = {
                                         return -- exit dialing thread
                                     end
                                 else
-                                    repeat 
-                                        os.sleep(0.5)
-                                    until stargate.getGateStatus() == "idle"
+                                    waitUntilIdle(0.5)
                                     stargate.engageSymbol(newAddress[i])
                                 end
                                 if i == totalGlyphs then
                                     if speedDial and gateType == "MW" then
-                                        repeat 
-                                            os.sleep()
-                                        until stargate.getGateStatus() == "idle"
+                                        
+                                        waitUntilIdle()
                                         print("Pressing big red button.")
                                         _, engageResult, errormsg = dhd.pressBRB()
                                         if engageResult~="dhd_engage" then 
@@ -382,11 +392,15 @@ local EventListeners = {
                                         end
                                     end
                                 end
-                                os.sleep()
+                                if mustWaitUntilIdle or args.speed == nil then
+                                    waitUntilIdle()
+                                else
+                                    os.sleep(delayTime)
+                                end
                             end
                             print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
                             if engageResult == "stargate_engage" or engageResult == "dhd_engage" then
-                                send(sender, port, "gdsdialresult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
+                                send(sender, port, "gdsCommandResult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
                                 if type(args.IDC)=="number" then
                                     repeat 
                                         os.sleep()
@@ -402,14 +416,17 @@ local EventListeners = {
                                         
                                         msg = sendIDC(args.IDC, 10)
                                         sentCount = sentCount + 1
+                                        if sentCount == 5 then
+                                            send(sender, port, "gdsCommandResult: Still waiting for response...")
+                                        end
                                     until (msg ~= "Iris is busy!" and not msg:match("Code accepted")) or sentCount == 10 -- or msg == ""
                                     print("IDC Response: "..msg.." took "..sentCount.." tries.")
                                     waitTicks(15)
-                                    send(sender, port, "gdsdialresult: "..msg)
+                                    send(sender, port, "gdsCommandResult: "..msg)
                                 end
                             else
                                 waitTicks(15)
-                                send(sender, port, "gdsdialresult: Dialing error: "..errormsg)
+                                send(sender, port, "gdsCommandResult: Dialing error: "..errormsg)
                             end
                             
                         else
@@ -435,7 +452,7 @@ local EventListeners = {
                         end
                         print(returnstr)
                         waitTicks(5)
-                        send(sender, port, "gdsdialresult: " .. returnstr)
+                        send(sender, port, "gdsCommandResult: " .. returnstr)
                     end
                 elseif command == "iris" then
                     --todo
@@ -443,19 +460,14 @@ local EventListeners = {
                     lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-6
                     if currentTime - lastReceived[userprocessKey] > 5 then
                         lastReceived[userprocessKey] = currentTime
-                        local returntbl = "gdsgate"..serialization.serialize({
-                            gateType = gateType;
-                            Address = {
-                                MW = stargate.stargateAddress.MILKYWAY;
-                                PG = stargate.stargateAddress.PEGASUS;
-                                UN = stargate.stargateAddress.UNIVERSE;
-                            };
-                            uuid = modem.address
-                        })
-                        threads.query = thread.create(send, sender, port, returntbl)
-                        print(returntbl)
+                        threads.query = thread.create(send, sender, port, gatedataTable)
                     end
-                elseif command == "" then
+                elseif command == "update" then
+                    if settings.networkAdminPassword~=nil and settings.networkAdminPassword == args.networkPassword then
+                        local incomingFileHeap = {...}
+                    else
+                        send(sender, port, "gdsCommandResult: Insufficient network permissions. Password is invalid or password is not set.")
+                    end
                 end
             end
         end
@@ -483,6 +495,9 @@ local EventListeners = {
                     print("Iris is open.")
                     waitTicks(20)
                     stargate.sendMessageToIncoming("Gate is open!")
+                    if settings.autoSyncToIncoming then 
+                        threads.autosync = thread.create(broadcast, settings.listeningPorts[1], gatedataTable)
+                    end
                 else
                     waitTicks(20)
                     stargate.sendMessageToIncoming("Invalid IDC.")
@@ -496,6 +511,9 @@ local EventListeners = {
                 until gateStatus == "open"
                 waitTicks(20)
                 stargate.sendMessageToIncoming("Gate is open!")
+                if settings.autoSyncToIncoming then 
+                    threads.autosync = thread.create(broadcast, settings.listeningPorts[1], gatedataTable)
+                end
             end
             threads.IDCHandler:kill()
         end)
