@@ -71,7 +71,7 @@ if component.isAvailable("stargate") then
         };
         uuid = modem.address
     })
-    jsgVersion = tonumber(stargate.getJSGVersion():sub(-8):gsub("[.]",""))
+    jsgVersion, _ = tonumber(stargate.getJSGVersion():sub(-8):gsub("[.]",""))
     mustWaitUntilIdle = jsgVersion > 41103
 else
     print("Stargate not connected")
