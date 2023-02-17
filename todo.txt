@@ -1,29 +1,62 @@
-address Dialing System
+Gate Dialing System
 Concept: GDS will be operated by tablet only with a very lightweight interface with an integrated command bar, output, and address window
          the actual dialing will be executed by a (gate) computer connected to the gate at the address
          known addresses will be stored on the tablet, but can also be exported/synced/shared
-         the output window will show color coded outputs, e.g., "dialing from some_address: ?", and upon recieving signal from the dialing computer, the output message will be updated
-         yellow = processing, green = success, red = failed
-         note: color coded is kind of weird in OC so maybe not color coded, or at least low priority
+         note: color coded is kind of weird in OC so maybe not color coded (low priority)
 
 features to impliment
-    add in saveToSettings function at the end of the program
-    add optional signal encryption with user-chosen password (decryption key) for private networks
-    add in address verification via pinging nearby gates with getRequiredEnergyToDial
-        ^ note: could use a linked card connected to the primary gate, if there is one, and use it to verify the energy required to dial if its loaded
-    add scrolling to output window
-    fix bottom of list scrolling of guilist object API
-    accouncement of incoming and outgoing wormholes if the gate is in the database
-    gate-computer query system for nearby gates
-        note: gates that aren't already in the database will be entered with their name as the UUID of the stargate component with all three addresses known to the gate computer
-    gate dialing computer program
-    user-user and in-general address/database sharing 
-    user-gatecomputer database export (only works if the specified gate computer has a floppy disk and disk drive available)
-    database exporting to floppy (unsure)
-    multiple IDCs per address (unsure of the rules with this)
-    short range toggle-able chat system (maybe a tab on the output window if chatting = true) (low priority)
-        ^ note: will need to add block command to ignore messages from certain players in the instance of abuse (spam) or whatever
-    buffer of previous commands in order (20 indexes), selectable with up and down arrow
+    tablet:
+        add scrolling to output window 
+        make command prefix modifiable
+        replace history tab with network tab
+        add networking-based commands
+            e.g.,   set entry entryName network networkName/index
+                    set entry entryName netpass somePassword
+                    set entry entryName hashcode somePassword
+            details: networks are a preset table of data that defines a network such as adminList, network password (netpass), hashcode (used to encrypt password), 
+                     modem channel, custom IDCs, and whatever things that come in the future
+        add preset tab
+            ^ details: preset commands that execute a series of predefined commands via double click or direct execution in the command bar
+        user-user and in-general chat and address/database sharing 
+            ^ details:  to prevent spam, a rate limit of 1 message per 0.1 seconds will apply unless they are blocked in which case all messages will be ignored
+                        to enable or disable chat, use ";set chat on/off|true/false" or ";set chat" to toggle
+                        to enable or disable messages from unnamed computers, use ";set namedonly on/off|true/false" or ";set namedonly" to toggle
+                        to make contact with others, use ";speak nearby insertMessageHere" 
+                        to get past rate limit, the user must use ";trust uuid/nickname" (partial match compatibility, ";untrust" works the same)
+                        to change or set the screen name of a uuid, users can use ";set screenname/sname/nick/nickname uuid someNewName" (partial match compatibility, if name argument is nil, nickname will be removed)
+                        to retrieve a nickname, use ";get screenname/sname/nick/nickname uuid"
+                        to retrieve a uuid from a nickname, use ";get modemid/mdid screenname/sname/nick/nickname"
+                        to retrieve a list of all nicknames and uuids, use ";get screennames/snames/nicks/nicknames"
+                        to accept or deny incoming messages, use ";accept uuid/nickname" or ";deny uuid/nickname" (partial match compatibility, performs command on the last first received data if no argument is passed) 
+                        to block or unblock users, ";block uuid/nickname", ";unblock uuid/nickname" (partial match compatibility)
+                        to see blocked users, ";get blocked" (name:uuid or uuid if no name is set)
+                        to share entries use ";share database uuid/nickname entryname/index,entryname/index,entryname/index,..." (partial match compatibility)
+                        to share networks use ";share network uuid/nickname networkname/index" (partial match compatibility)
+        buffer of previous commands in order (20 indexes), selectable with up and down arrow
+        short range toggle-able chat system (maybe a tab on the output window if chatting = true) (low priority)
+            ^ note: will need to add block command to ignore messages from certain players in the instance of abuse (spam) or whatever
+
+    gatecomputer:
+        add kawoosh-protection for outgoing wormholes 
+            ^ details: if iris type is shield and power is plentiful, activate on dialing start, and disable when wormhole has stabilized
+        multiple IDCs support in gate computers
+            ^ note: major problem with this is that it won't work when the gate is on automatic mode
+                    although, since computers can now be turned on via redstone (which DHD emits when the gate is activated), it is now viable to do IDCs via modem.send
+        add NetworkPassword (netpass) settings, decryption, hash generation, and permission check for comparison 
+        add setting option to require valid netpass to execute stargate based commands like dial, close, pause, etc
+        add NotificationListeners list 
+        add announcement (to NotificationListeners list) of incoming and outgoing wormholes and other events
+            ^ details: if outgoing, send only to those on the list that didn't trigger the command. If a valid IDC was provided and its linked to a specific identity, include the identity too
+            ^ note: semi-difficult to do, perhaps with network setting configuration have incomingUpdateList = {modemuuid, ...}
+        user-gatecomputer database export (only works if the specified gate computer has a floppy disk and disk drive available)
+            ^ note: unsure if this will be all that viable since tablets can be put into a charger and have files copied from /mnt/
+        change "gds -u" to "gds --update"
+        change update protocol to check for floppy with GDS files first, then check for internet card if viable floppy disk files aren't found
+            ^ details: if netpass is set, do decryption and compare that the password is correct first
+                       ideally an OpenOS floppy would be modded and install GDS with it and whatever premade settings are detected (if any)
+                       check would happen on startup of the program (in the bin file) 
+        add "gds --netflash:overwrite/replace" (overwrite is default) which checks for floppy with valid GDS network settings
+            ^ note: if netpass is set, do decryption and compare that the password is correct first
 
 commands usage/documentation:
     use case example:
