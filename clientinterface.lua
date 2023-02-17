@@ -388,7 +388,7 @@ commands = {
                 if newspeed < 0 then
                     newspeed = 0
                 end
-                returnstr = string.format("Minimum speed is 0. Dial speed set to %.3f.", newspeed)
+                returnstr = string.format("Minimum speed is 0. Dial speed set to %.1f.", newspeed)
                 settings.dialSpeed = newspeed
             elseif args[3] == "normal" or args[3] == nil then
                 newspeed = 10
