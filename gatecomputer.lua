@@ -350,7 +350,7 @@ local EventListeners = {
                         print("Glyph starting index = "..tostring(glyphStart))
                         if stargate.getGateStatus() == "idle" then
                             local speedDial = (args.speed and args.speed < 1 or false) and canSpeedDial
-                            local delayTime = args.speed and args.speed / totalGlyphs + 1
+                            local delayTime = (args.speed or 0) / totalGlyphs + 1
                             local engageResult, errormsg, dialStart = false, "", computer.uptime()
                             print("Valid address.")
                             print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed))
