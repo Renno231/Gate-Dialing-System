@@ -388,7 +388,7 @@ commands = {
                 if newspeed < 0 then
                     newspeed = 0
                 end
-                returnstr = "Minimum speed is 0. Dial speed set to "..tostring(newspeed).."."
+                returnstr = string.format("Minimum speed is 0. Dial speed set to %.3f.", newspeed)
                 settings.dialSpeed = newspeed
             elseif args[3] == "normal" or args[3] == nil then
                 newspeed = 10
@@ -437,8 +437,10 @@ commands = {
             returnstr = "Unused memory: "..tostring(math.floor((computer.freeMemory()/computer.totalMemory())*100)).."%"
         elseif args[2] == "radius" or args[2] == "range" then
             returnstr = "Current modem range is "..settings.modemRange
+        elseif args[2] == "speed" then
+            returnstr = "Current dial speed is "..tostring(settings.dialSpeed)
         elseif args[2] == "idc" and args[3] then
-
+            --unfinished
         elseif args[2] then
             returnstr = "Invalid sub-command: "..tostring(args[2])
         end
