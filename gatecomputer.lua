@@ -73,7 +73,7 @@ if component.isAvailable("stargate") then
     })
     jsgVersion, _ = stargate.getJSGVersion():sub(-8):gsub("[.]","")
     jsgVersion = tonumber(jsgVersion)
-    mustWaitUntilIdle = jsgVersion > 41103
+    mustWaitUntilIdle = jsgVersion > 41105
 else
     print("Stargate not connected")
     os.exit()
@@ -354,7 +354,7 @@ local EventListeners = {
                             local delayTime = (args.speed or 0) / totalGlyphs + 1
                             local engageResult, errormsg, dialStart = false, "", computer.uptime()
                             print("Valid address.")
-                            print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed))
+                            print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed).." | mustWaitUntilIdle = "..tostring(mustWaitUntilIdle))
                             for i = glyphStart, totalGlyphs do
                                 print("> Glyph "..i)
                                 if speedDial then
