@@ -393,7 +393,7 @@ local EventListeners = {
                                         end
                                     end
                                 end
-                                if mustWaitUntilIdle or args.speed == nil then
+                                if (mustWaitUntilIdle or args.speed == nil) and args.speed~=0 then
                                     waitUntilIdle()
                                 else
                                     os.sleep(delayTime)
