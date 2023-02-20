@@ -407,6 +407,7 @@ local EventListeners = {
                                         os.sleep()
                                     until gateStatus == "open"
                                     local sentCount, msg = 0, "Gate did not respond to IDC."
+                                    local validMessage = false
                                     repeat
                                         if sentCount > 0 then 
                                             if sentCount == 1 then 
@@ -416,11 +417,12 @@ local EventListeners = {
                                         end
                                         
                                         msg = sendIDC(args.IDC, 10)
+                                        validMessage = (msg ~= "Iris is busy!" and not msg:match("Code accepted"))
                                         sentCount = sentCount + 1
-                                        if sentCount == 5 then
+                                        if sentCount == 5 and not validMessage then
                                             send(sender, port, "gdsCommandResult: Still waiting for response...")
                                         end
-                                    until (msg ~= "Iris is busy!" and not msg:match("Code accepted")) or sentCount == 10 -- or msg == ""
+                                    until validMessage or sentCount == 10 -- or msg == ""
                                     print("IDC Response: "..msg.." took "..sentCount.." tries.")
                                     waitTicks(15)
                                     send(sender, port, "gdsCommandResult: "..msg)
