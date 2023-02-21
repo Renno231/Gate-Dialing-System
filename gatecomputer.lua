@@ -373,6 +373,11 @@ local EventListeners = {
                                     waitUntilIdle(0.5)
                                     stargate.engageSymbol(newAddress[i])
                                 end
+                                if (mustWaitUntilIdle or args.speed == nil) and args.speed~=0 then
+                                    waitUntilIdle()
+                                else
+                                    os.sleep(delayTime)
+                                end
                                 if i == totalGlyphs then
                                     if speedDial and gateType == "MW" then
                                         
@@ -392,11 +397,6 @@ local EventListeners = {
                                             print("Stargate engaged: true")
                                         end
                                     end
-                                end
-                                if (mustWaitUntilIdle or args.speed == nil) and args.speed~=0 then
-                                    waitUntilIdle()
-                                else
-                                    os.sleep(delayTime)
                                 end
                             end
                             print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
