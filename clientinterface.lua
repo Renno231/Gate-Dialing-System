@@ -38,7 +38,7 @@ local lastKeyPressed = ""
 local outputBuffer = {} --scrolling?
 local commandBuffer = {} --todo
 
-local lastEntry = nil
+local lastEntry, lastTimeUsed = nil, computer.uptime()
 local database = {} -- all of the addresses
 local history = {}
 local lastReceived = {}
@@ -61,6 +61,7 @@ local settings = { --add a read and save ability
     defaultGateTimeout = 30;
     owner = "";
     lastUser = nil;
+    powerSaving = true;
 }
 
 --predeclaring variables
@@ -336,9 +337,9 @@ end
 --output window code end
 local commandDescriptions = {
     clear = "empties output buffer";
-    set = "modifies GDS settings such as modem range/radius, port/channel, and default dialing speed";
+    set = "modifies GDS settings such as modem range/radius, port/channel, and default dialing speed. e.g. set speed 10";
     quit = "closes GDS";
-    get = "returns information about current settings such as remaining battery,";
+    get = "returns information about current settings such as remaining battery, network port, wireless range, etc";
     import = "imports AGS entries from /ags/gateEntries.ff";
     add = "creates or modifies entries, entry IDCs, and entry UUIDs";
     delete = "deletes an entry by name or position";
@@ -397,6 +398,15 @@ commands = {
             else
                 returnstr = "Speed must be a number or 'normal' which is 10 seconds."
             end
+        elseif args[2] == "psaving" or args[2] == "powersaving" then
+            local newValue = args[3]
+            if newValue == "true" or newValue == "on" then
+                settings.powerSaving = true
+            elseif newValue == "false" or newValue == "off" then
+                settings.powerSaving = false
+            else
+                returnstr = "The third argument must be true/on or false/off."
+            end
         end
         writeSettingsFile()
         return returnstr
@@ -439,6 +449,8 @@ commands = {
             returnstr = "Current modem range is "..settings.modemRange
         elseif args[2] == "speed" then
             returnstr = "Current dial speed is "..tostring(settings.dialSpeed)
+        elseif args[2] == "psaving" or args[2] == "powersaving" then
+            returnstr = "Power saving is "..tostring(settings.powerSaving and "on." or "off.")
         elseif args[2] == "idc" and args[3] then
             --unfinished
         elseif args[2] then
@@ -905,6 +917,7 @@ local EventListeners = {
     key_down = event.listen(
         "key_down",
         function(_, keyboardAddress, chr, code, playerName)
+            lastTimeUsed = computer.uptime()
             settings.lastUser = playerName
             local key = keyboard.keys[code]
             local uckey = unicode.char(chr)
@@ -941,6 +954,7 @@ local EventListeners = {
     touch = event.listen(
         "touch",
         function(_, screenAddress, x, y, button, playerName)
+            lastTimeUsed = computer.uptime()
             local status, err =
                 xpcall(
                 function()
@@ -976,6 +990,7 @@ local EventListeners = {
         end
     ),
     scroll = event.listen("scroll", function(_, screenAddress, x, y, direction, playerName)
+        lastTimeUsed = computer.uptime()
         for i, lst in ipairs (listapi.Lists) do
             if lst:touch(x, y, true) then
                 lst:scroll(-direction)
@@ -1015,6 +1030,11 @@ scanNearby() --first scan to check where things are
 
 while isRunning and HadNoError do
     os.sleep(0.25)
+    if settings.powerSaving then
+        if computer.uptime() - lastTimeUsed > 300 then
+            computer.shutdown()
+        end
+    end
 end
 
 --program cleanup
