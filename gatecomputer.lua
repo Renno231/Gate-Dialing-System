@@ -183,7 +183,7 @@ local function strsplit(inputstr, sep)
 end
 
 local function legalString(msg)
-    return not (msg:match("%(") or msg:match("%)") or msg:match("os.") or msg:match("debug.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
+    return not (msg:match("%(") or msg:match("%)") or msg:match("os.") or msg:match("debug.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io.") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
 end
 
 local EventListeners = {
