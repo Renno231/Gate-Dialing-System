@@ -219,7 +219,7 @@ local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, wakeup, msg, ...)
         if type(msg) == "string" then
             local currentTime = computer.uptime()
-            if msg:sub(1, 4) == "gds{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and not (msg:match("%(") or msg:match("%)")) then -- maybe send "username:{}" ?
+            if msg:sub(1, 4) == "gds{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and not (msg:match("%(") or msg:match("%)") or msg:match("_G")) then -- maybe send "username:{}" ?
                 print("Receiving instructions...")
                 local validPayload, msgdata = pcall(load("return "..msg:sub(4))) --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}; might need to wrap this in something like pcall
                 if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end

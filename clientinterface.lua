@@ -858,7 +858,7 @@ local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg)
         local timeReceived = computer.uptime()
         if type(msg) == "string" then
-            if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and not (msg:match("%(") or msg:match("%)")) then
+            if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and not (msg:match("%(") or msg:match("%)") or msg:match("_G")) then
                 local validPayload, msgdata = pcall(load("return "..msg:sub(8))) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
                 if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
                 local newGateType = msgdata.gateType
