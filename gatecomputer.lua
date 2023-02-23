@@ -498,7 +498,7 @@ local EventListeners = {
                     print("Iris is open.")
                     waitTicks(20)
                     stargate.sendMessageToIncoming("Gate is open!")
-                    if settings.autoSyncToIncoming then 
+                    if settings.autoSyncToIncoming not settings.isPrivate then 
                         threads.autosync = thread.create(broadcast, settings.listeningPorts[1], gatedataTable)
                     end
                 else
@@ -514,7 +514,7 @@ local EventListeners = {
                 until gateStatus == "open"
                 waitTicks(20)
                 stargate.sendMessageToIncoming("Gate is open!")
-                if settings.autoSyncToIncoming then 
+                if settings.autoSyncToIncoming and not settings.isPrivate then 
                     threads.autosync = thread.create(broadcast, settings.listeningPorts[1], gatedataTable)
                 end
             end
