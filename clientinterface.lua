@@ -407,6 +407,8 @@ commands = {
             else
                 returnstr = "The third argument must be true/on or false/off."
             end
+        elseif args[2] then
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         writeSettingsFile()
         return returnstr
@@ -508,6 +510,8 @@ commands = {
             else
                 returnstr = "Invalid file"
             end
+        else 
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         return returnstr
     end;
@@ -575,6 +579,8 @@ commands = {
             else
                 returnstr = "Invalid entry/address: "..args[3]
             end
+        else
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         return returnstr
     end;
@@ -596,6 +602,8 @@ commands = {
                     gateOperator:write(nearbyGatesList.pos.x-3, nearbyGatesList.pos.y-2, "|Nearby: "..#nearbyGatesList.entries)
                 end
             end
+        else
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         return returnstr
     end;
@@ -618,6 +626,8 @@ commands = {
                 writeToDatabaseFile()
                 returnstr = "Swapped "..gateA.Name.." with "..gateB.Name
             end
+        else
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         return returnstr
     end;
@@ -643,6 +653,8 @@ commands = {
                 writeToDatabaseFile()
                 returnstr = "Moved "..gateA.Name.." to "..newIndex
             end
+        else
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         return returnstr
     end;
@@ -675,6 +687,8 @@ commands = {
             if databaseList.visible then 
                 databaseList:display()
             end
+        else
+            returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         return returnstr
     end;
@@ -706,7 +720,7 @@ commands = {
                 lastEntry = gateA
             end
         else
-            returnstr = "Invalid argument(s)."
+            returnstr = "Invalid argument: "..tostring(gateA == nil and args[2] or args[3])
         end
         return returnstr
     end;
@@ -844,7 +858,7 @@ local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg)
         local timeReceived = computer.uptime()
         if type(msg) == "string" then
-            if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
+            if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and not (msg:match("%(") or msg:match("%)")) then
                 local validPayload, msgdata = pcall(load("return "..msg:sub(8))) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
                 if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
                 local newGateType = msgdata.gateType
