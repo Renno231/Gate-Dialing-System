@@ -851,14 +851,16 @@ end
 processInput("GDS", "Do ;help or ;cmds to see commands.")
 modem.open(settings.networkPort)
 -- end of command processing
-
+local function legalString(msg)
+    return not (msg:match("%(") or msg:match("%)") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
+end
 --event listeners
 local restrictedKeyCodes = {[14] = true; [15] = true; [28]=true; [29]=true; [42] = true; [54] = true; [56] = true; [58] = true}
 local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg)
         local timeReceived = computer.uptime()
         if type(msg) == "string" then
-            if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and not (msg:match("%(") or msg:match("%)") or msg:match("_G")) then
+            if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and legalString(msg) then
                 local validPayload, msgdata = pcall(load("return "..msg:sub(8))) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
                 if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
                 local newGateType = msgdata.gateType

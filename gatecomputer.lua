@@ -182,6 +182,10 @@ local function strsplit(inputstr, sep)
     return t
 end
 
+local function legalString(msg)
+    return not (msg:match("%(") or msg:match("%)") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
+end
+
 local EventListeners = {
     --stargate_spin_chevron_engaged = event.listen("stargate_spin_chevron_engaged", function(_, _, caller, num, lock, glyph) end),
 
@@ -219,7 +223,7 @@ local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, wakeup, msg, ...)
         if type(msg) == "string" then
             local currentTime = computer.uptime()
-            if msg:sub(1, 4) == "gds{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and not (msg:match("%(") or msg:match("%)") or msg:match("_G")) then -- maybe send "username:{}" ?
+            if msg:sub(1, 4) == "gds{" and msg:sub(msg:len()) == "}" and msg:len() > 10 and legalString(msg) then -- maybe send "username:{}" ?
                 print("Receiving instructions...")
                 local validPayload, msgdata = pcall(load("return "..msg:sub(4))) --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}; might need to wrap this in something like pcall
                 if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
