@@ -852,7 +852,7 @@ processInput("GDS", "Do ;help or ;cmds to see commands.")
 modem.open(settings.networkPort)
 -- end of command processing
 local function legalString(msg)
-    return not (msg:match("%(") or msg:match("%)") or msg:match("os.") or msg:match("debug.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io.") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
+    return not (msg:match("%(") or msg:match("%)") or msg:match("os%.") or msg:match("debug%.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io%.") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
 end
 --event listeners
 local restrictedKeyCodes = {[14] = true; [15] = true; [28]=true; [29]=true; [42] = true; [54] = true; [56] = true; [58] = true}

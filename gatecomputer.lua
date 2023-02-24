@@ -183,7 +183,7 @@ local function strsplit(inputstr, sep)
 end
 
 local function legalString(msg)
-    return not (msg:match("%(") or msg:match("%)") or msg:match("os.") or msg:match("debug.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io.") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
+    return not (msg:match("%(") or msg:match("%)") or msg:match("os%.") or msg:match("debug%.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io%.") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
 end
 
 local EventListeners = {
@@ -502,7 +502,7 @@ local EventListeners = {
                     print("Iris is open.")
                     waitTicks(20)
                     stargate.sendMessageToIncoming("Gate is open!")
-                    if settings.autoSyncToIncoming not settings.isPrivate then 
+                    if settings.autoSyncToIncoming and not settings.isPrivate then 
                         threads.autosync = thread.create(broadcast, settings.listeningPorts[1], gatedataTable)
                     end
                 else
