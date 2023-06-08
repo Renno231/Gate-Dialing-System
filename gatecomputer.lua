@@ -25,10 +25,16 @@ local settings = {
     networkAdminUUID = false;
     isPrivate = false;
     autoSyncToIncoming = true;
+    headless = true;
 }
-
+local _print = print
+local function print(...)
+    if not settings.headless then
+        _print(...)
+    end
+end
 local canSpeedDial = true
-local mustWaitUntilIdle = false
+local mustwaitUntilState = false
 local commandLog = {} --table.insert(commandLog, sender.." "..self.command)
 local threads = {} --threads.example = thread.create(function() end); threads.example:kill(); threads.example:suspend()
 local lastReceived = {} -- for wireless messages
@@ -73,7 +79,7 @@ if component.isAvailable("stargate") then
     })
     jsgVersion, _ = stargate.getJSGVersion():sub(-8):gsub("[.]","")
     jsgVersion = tonumber(jsgVersion)
-    mustWaitUntilIdle = jsgVersion > 41105
+    mustwaitUntilState = jsgVersion > 41105
 else
     print("Stargate not connected")
     os.exit()
@@ -117,7 +123,7 @@ local function readSettingsFile()
     end
 end
 readSettingsFile()
-
+writeSettingsFile()
 local function checkTime()
     local f = io.open("/tmp/timecheck","w")
     f:write("test")
@@ -137,10 +143,13 @@ local function waitTicks(ticks)
     os.sleep(ticks/checkTPS(0.1) - 0.1)
 end
 
-local function waitUntilIdle(step)
+local function waitUntilState(state, step)
+    state = state or "idle"
+    step = step or 0
     repeat 
         os.sleep(step)
-    until stargate.getGateStatus() == "idle"
+        gateStatus = stargate.getGateStatus()
+    until gateStatus == state
 end
 
 local function sendIDC(code, timeout)
@@ -159,7 +168,7 @@ local function sendIDC(code, timeout)
     return (pulls > timeout or msg==nil) and "No IDC response." or msg:sub(1, -4) 
 end
 
-print("Starting gate dialer program.")
+print("Starting gate dialer program. To disable printouts, enable headless mode in the settings file.")
 --send(sadd, 100, {gate.getGateType(), state, gate.dialedAddress, serial.serialize(gate.stargateAddress)})
 local function send(address, port, msg)
     os.sleep(math.min(math.random()/5, 0.2))
@@ -183,7 +192,7 @@ local function strsplit(inputstr, sep)
 end
 
 local function legalString(msg)
-    return not (msg:match("%(") or msg:match("%)") or msg:match("os%.") or msg:match("debug%.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io%.") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package"))
+    return not (msg:match("%(") or msg:match("%)") or msg:match("os%.") or msg:match("debug%.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io%.") or msg:match("io%[") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package%.") or msg:match("package%["))
 end
 
 local EventListeners = {
@@ -349,21 +358,22 @@ local EventListeners = {
                             end
                             if gateStatus~="idle" then
                                 print("Waiting for gate to finish actions...")
-                                waitUntilIdle()
+                                waitUntilState()
                             end
                         end
                         print("Glyph starting index = "..tostring(glyphStart))
-                        if stargate.getGateStatus() == "idle" then
+                        gateStatus = stargate.getGateStatus()
+                        if gateStatus == "idle" then
                             local speedDial = (args.speed and args.speed < 25 or false) and canSpeedDial
                             local delayTime = (args.speed or 0) / (totalGlyphs + 1)
                             local engageResult, errormsg, dialStart = false, "", computer.uptime()
                             print("Valid address.")
-                            print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed).." | mustWaitUntilIdle = "..tostring(mustWaitUntilIdle))
+                            print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed).." | mustwaitUntilState = "..tostring(mustwaitUntilState))
                             for i = glyphStart, totalGlyphs do
                                 print("> Glyph "..i)
                                 if speedDial then
-                                    if gateType~="MW" then
-                                        waitUntilIdle(0.5)
+                                    if mustwaitUntilState then
+                                        waitUntilState(nil, 0.2)
                                     end
                                     _, engageResult, errormsg = dhd.pressButton(newAddress[i])
                                     if engageResult ~= "dhd_pressed" then
@@ -374,18 +384,18 @@ local EventListeners = {
                                         return -- exit dialing thread
                                     end
                                 else
-                                    waitUntilIdle(0.5)
+                                    waitUntilState(nil, 0.5)
                                     stargate.engageSymbol(newAddress[i])
                                 end
-                                if (mustWaitUntilIdle or args.speed == nil) and args.speed~=0 then
-                                    waitUntilIdle()
+                                if (mustwaitUntilState or args.speed == nil) and args.speed~=0 then
+                                    waitUntilState()
                                 else
                                     os.sleep(delayTime)
                                 end
                                 if i == totalGlyphs then
                                     if speedDial and gateType == "MW" then
                                         
-                                        waitUntilIdle()
+                                        waitUntilState()
                                         print("Pressing big red button.")
                                         _, engageResult, errormsg = dhd.pressBRB()
                                         if engageResult~="dhd_engage" then 
@@ -395,7 +405,8 @@ local EventListeners = {
                                         repeat 
                                             currentDialedAddress = stargate.dialedAddress
                                             os.sleep()
-                                        until string.gsub(currentDialedAddress:sub(currentDialedAddress:len()-lastGlyph:len()), "]", "") == lastGlyph and stargate.getGateStatus() == "idle"
+                                            gateStatus = stargate.getGateStatus()
+                                        until string.gsub(currentDialedAddress:sub(currentDialedAddress:len()-lastGlyph:len()), "]", "") == lastGlyph and gateStatus == "idle"
                                         engageResult = stargate.engageGate()
                                         if engageResult == "stargate_engage" then
                                             print("Stargate engaged: true")
@@ -407,9 +418,7 @@ local EventListeners = {
                             if engageResult == "stargate_engage" or engageResult == "dhd_engage" then
                                 send(sender, port, "gdsCommandResult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
                                 if type(args.IDC)=="number" then
-                                    repeat 
-                                        os.sleep()
-                                    until gateStatus == "open"
+                                    waitUntilState("open")
                                     local sentCount, msg = 0, "Gate did not respond to IDC."
                                     local validMessage = false
                                     repeat
@@ -472,6 +481,7 @@ local EventListeners = {
                 elseif command == "update" then
                     if settings.networkAdminPassword~=nil and settings.networkAdminPassword == args.networkPassword then
                         local incomingFileHeap = {...}
+                        --unfinished
                     else
                         send(sender, port, "gdsCommandResult: Insufficient network permissions. Password is invalid or password is not set.")
                     end
@@ -491,6 +501,7 @@ local EventListeners = {
                     print("IDC Valid:"..(code).." : "..settings.IDCs[code])
                     repeat 
                         os.sleep()
+                        gateStatus = stargate.getGateStatus()
                     until gateStatus == "open"
                     if stargate.getIrisState() == "CLOSED" then
                         stargate.toggleIris()
@@ -513,9 +524,7 @@ local EventListeners = {
                     end
                 end
             else
-                repeat 
-                    os.sleep()
-                until gateStatus == "open"
+                waitUntilState("open")
                 waitTicks(20)
                 stargate.sendMessageToIncoming("Gate is open!")
                 if settings.autoSyncToIncoming and not settings.isPrivate then 
