@@ -71,12 +71,12 @@ function List:removeEntry(selector)
     end
 end
 
-function List:getIndexFromName(name)
+function List:getIndexFromName(name, acceptpartial)
     if type(name)~="string" then return end
     local foundIndex = nil
     name = name:lower()
     for i, entry in ipairs (self.entries) do
-        if entry:lower()==name or entry:sub(1, name:len()):lower() == name or name:sub(1, entry:len()) == entry:lower() then
+        if entry:lower()==name or (acceptpartial and (entry:sub(1, name:len()):lower() == name or name:sub(1, entry:len()) == entry:lower() ) ) then
             foundIndex = i
             break
         end
@@ -84,10 +84,10 @@ function List:getIndexFromName(name)
     return foundIndex
 end
 
-function List:selectEntry(selector)
+function List:selectEntry(selector, acceptpartial)
     if self.active then
         if type(selector) == "string" then
-            local found = getIndexFromName(selector)
+            local found = self:getIndexFromName(selector, acceptpartial)
             if found then
                 self.currententry = found
                 self:display()
@@ -101,10 +101,10 @@ function List:selectEntry(selector)
     return self.currententry
 end
 
-function List:unselect(selector)
+function List:unselect(selector, acceptpartial)
     if self.active then
         if type(selector) == "string" then
-            local found = getIndexFromName(selector)
+            local found = self:getIndexFromName(selector, acceptpartial)
             if found then
                 self.currententry = nil
                 self:display()
