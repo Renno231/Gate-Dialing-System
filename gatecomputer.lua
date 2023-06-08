@@ -25,11 +25,12 @@ local settings = {
     networkAdminUUID = false;
     isPrivate = false;
     autoSyncToIncoming = true;
-    headless = true;
+    runInBackground = true;
+    showPrints = false;
 }
 local _print = print
 local function print(...)
-    if not settings.headless then
+    if settings.showPrints and not settings.runInBackground then
         _print(...)
     end
 end
@@ -550,17 +551,18 @@ local EventListeners = {
         end
     )
 }
+if not settings.runInBackground then
+    while isRunning and HadNoError do
+        os.sleep(0.1)
+    end
 
-while isRunning and HadNoError do
-    os.sleep(0.1)
-end
+    for eventname, listener in pairs(EventListeners) do
+        event.cancel(listener)
+    end
+    EventListeners = nil
 
-for eventname, listener in pairs(EventListeners) do
-    event.cancel(listener)
+    for name, thread in pairs(threads) do
+        thread:kill()
+    end
+    threads = nil
 end
-EventListeners = nil
-
-for name, thread in pairs(threads) do
-    thread:kill()
-end
-threads = nil
