@@ -22,7 +22,7 @@ if opts.u then --update
             end
         end
     else
-        print("Installation not detected.")
+        print("GDS installation not detected.")
         os.exit(false)
     end
 elseif (opts.c or opts.g) then
@@ -30,19 +30,22 @@ elseif (opts.c or opts.g) then
         shell.execute("wget -f https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/installer.lua")
     end
     shell.execute("/home/installer.lua "..options)
-elseif opts.d then --delete, need to add detection for autorun in /home/.shrc
+    gdsType = (filesystem.exists("/gds/clientinterface.lua") and "-c") or (filesystem.exists("/gds/gatecomputer.lua") and "-g")
+elseif opts.d then --delete
+    print("Uninstalling GDS...")
     for i, address in ipairs (gdsFiles) do
         if filesystem.exists(address) then
             filesystem.remove(address)
-            print("removed",address)
+            print("     > Removed",address)
         end
     end
     if filesystem.exists("/etc/rc.d/gds.lua") then
         filesystem.remove("/etc/rc.d/gds.lua")
         shell.execute("rc gds disable")
-        print("removed autostart")
+        print("     > Removed autostart.")
     end
-    print("uninstalled GDS files.")
+    print("Uninstalled Gate Dialing System files.")
+    os.exit()
 end
 if opts.a and gdsType then --autostart, include the shell.execute("install gds") to auto update GDS from floppy if its present
     local autorunFile = [[function start(msg)
@@ -61,6 +64,6 @@ if #args == 0 then
     if gdsType then
         shell.execute("/gds/"..(gdsType=="-c" and "clientinterface" or "gatecomputer")..".lua")
     else
-        print("GDS isn't installed.\n")
+        print("GDS not found.\n")
     end
 end
