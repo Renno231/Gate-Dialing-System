@@ -1,6 +1,6 @@
 local shell = require("shell")
 local filesystem = require("filesystem")
-
+local component = require("component")
 local args, opts = shell.parse(...)
 local gdsFiles = {"/bin/gds.lua", "/gds/gatecomputer.lua","/lib/clientinterface.lua","/lib/guilist.lua","/lib/guiwindow.lua","/lib/guibutton.lua","/lib/guitextbox.lua"}
 
@@ -8,6 +8,9 @@ local gdsType = (filesystem.exists("/gds/clientinterface.lua") and "-c") or (fil
 local options = "-"
 for k,v in pairs(opts) do options = options..tostring(k) end
 if opts.u then --update
+    if not component.isAvailable("internet") then
+        print("Internet card is required to update.") --plans to change this in the future
+    end
     if gdsType then
         if filesystem.exists("/home/installer.lua") then
             print("Running GDS installer...")
