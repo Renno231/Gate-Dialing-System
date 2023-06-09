@@ -399,7 +399,15 @@ local EventListeners = {
                                     end
                                 end
                                 hasEngagedGate = stargate.engageGate()
-                                print("Engaging stargate: "..tostring(hasEngagedGate))
+                                print("Engaging stargate: "..tostring(hasEngagedGate), hasEngagedGate and irisType~="NULL")
+                                if hasEngagedGate and irisType~="NULL" then
+                                    --thread.create(function() 
+                                        repeat os.sleep(0.1) until gateStatus =="open"
+                                        waitTicks(20)
+                                        
+                                        waitForIris("OPENED", 0)
+                                    --end)
+                                end
                             end
                         end
                         print("Gate Status: "..gateStatus)
@@ -417,16 +425,16 @@ local EventListeners = {
                                 waitUntilState()
                             end
                         end
-                        print("Glyph starting index = "..tostring(glyphStart))
                         gateStatus = stargate.getGateStatus()
-                        if gateStatus == "idle" then
-                            local speedDial = (args.speed and args.speed < 25 or false) and canSpeedDial
-                            local delayTime = (args.speed or 0) / (totalGlyphs + 1)
-                            local engageResult, errormsg, dialStart = false, "", computer.uptime()
+                        local speedDial = (args.speed and args.speed < 25 or false) and canSpeedDial
+                        local delayTime = (args.speed or 0) / (totalGlyphs + 1)
+                        local engageResult, errormsg, dialStart = false, "", computer.uptime()
+                        if gateStatus == "idle" and not hasEngagedGate then
+                            print("Glyph starting index = "..tostring(glyphStart))              
                             print("Valid address.")
                             print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed).." | mustwaitUntilState = "..tostring(mustwaitUntilState))
                             irisType = tostring(stargate.getIrisType())
-                            local irisToggleGlyph =  totalGlyphs -  math.ceil(((irisType:match("IRIS_") and 3) or (irisType == "SHIELD" and 1) or 1) / (delayTime > 0 and delayTime or 1))
+                            local irisToggleGlyph = math.max(glyphStart, totalGlyphs -  math.ceil(((irisType:match("IRIS_") and 3) or (irisType == "SHIELD" and 1) or 1) / (delayTime > 0 and delayTime or 1)))
                             for i = glyphStart, totalGlyphs do
                                 print("> Glyph "..i)
                                 local hasClosed, err
@@ -478,62 +486,61 @@ local EventListeners = {
                                     end
                                 end
                             end
-                            print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
-                            if settings.kawooshAvoidance then
-                                thread.create(function() 
-                                    repeat os.sleep(0.1) until gateStatus =="open"
-                                    waitTicks(20)
-                                    waitForIris("OPENED", 0)
-                                end)
-                            end
-                            if engageResult == "stargate_engage" or engageResult == "dhd_engage" then
-                                settings.lastWormhole = "outgoing"
-                                writeSettingsFile()
-                                broadcast(settings.listeningPorts[1], "gdswakeup")
-                                send(sender, port, "gdsCommandResult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
-                                
-                                if type(args.IDC)=="number" then
-                                    waitUntilState("open")
-                                    os.sleep(1)
-                                    local sentCount, msg = 0, "Gate did not respond to IDC."
-                                    local validMessage = false
-                                    local noResponseCount = 0
-                                    repeat
-                                        if sentCount > 0 then 
-                                            if sentCount == 1 then 
-                                                print("Bad response, sending IDC again.")
-                                            end
-                                            os.sleep(1)
-                                        end
-                                        
-                                        msg = sendIDC(args.IDC, 3)
-                                        validMessage = (msg ~= "Iris is busy!" and not msg:match("Code accepted"))
-                                        if msg == "No IDC response." and noResponseCount < 5 then
-                                            validMessage = false
-                                            noResponseCount = noResponseCount + 1
-                                        end
-                                        if msg == "Iris closed. Resend IDC." then --retry since the PC just turned on
-                                            sentCount = 0
-                                            validMessage = false
-                                            noResponseCount = 0
-                                            send(sender, port, "gdsCommandResult: Detected security measure. Resending IDC.")
-                                        end
-                                        sentCount = sentCount + 1
-                                        if sentCount == 5 and not validMessage then
-                                            send(sender, port, "gdsCommandResult: Awaiting response...")
-                                        end
-                                    until validMessage or sentCount == 10 -- or msg == ""
-                                    print("IDC Response: "..msg.." took "..sentCount.." tries.")
-                                    waitTicks(5)
-                                    send(sender, port, "gdsCommandResult: "..msg)
-                                end
-                            else
-                                waitTicks(5)
-                                send(sender, port, "gdsCommandResult: Dialing error: "..errormsg)
-                            end
+                        end
+                        --print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
+                        irisStatus = stargate.getIrisState()
+                        if settings.kawooshAvoidance and irisType~="NULL" and irisStatus == "CLOSED" then
+                            thread.create(function() 
+                                repeat os.sleep(0.1) until gateStatus =="open"
+                                waitTicks(20)
+                                waitForIris("OPENED", 0)
+                            end)
+                        end
+                        if engageResult == "stargate_engage" or engageResult == "dhd_engage" or hasEngagedGate then
+                            print("Commencing IDC procedure.")
+                            settings.lastWormhole = "outgoing"
+                            writeSettingsFile()
+                            broadcast(settings.listeningPorts[1], "gdswakeup")
+                            send(sender, port, "gdsCommandResult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
                             
+                            if type(args.IDC)=="number" then
+                                waitUntilState("open")
+                                os.sleep(1)
+                                local sentCount, msg = 0, "Gate did not respond to IDC."
+                                local validMessage = false
+                                local noResponseCount = 0
+                                repeat
+                                    if sentCount > 0 then 
+                                        if sentCount == 1 then 
+                                            print("Bad response, sending IDC again.")
+                                        end
+                                        os.sleep(1)
+                                    end
+                                    
+                                    msg = sendIDC(args.IDC, 3)
+                                    validMessage = (msg ~= "Iris is busy!" and not msg:match("Code accepted"))
+                                    if msg == "No IDC response." and noResponseCount < 5 then
+                                        validMessage = false
+                                        noResponseCount = noResponseCount + 1
+                                    end
+                                    if msg == "Iris closed. Resend IDC." then --retry since the PC just turned on
+                                        sentCount = 0
+                                        validMessage = false
+                                        noResponseCount = 0
+                                        send(sender, port, "gdsCommandResult: Detected security measure. Resending IDC.")
+                                    end
+                                    sentCount = sentCount + 1
+                                    if sentCount == 5 and not validMessage then
+                                        send(sender, port, "gdsCommandResult: Awaiting response...")
+                                    end
+                                until validMessage or sentCount == 10 -- or msg == ""
+                                print("IDC Response: "..msg.." took "..sentCount.." tries.")
+                                waitTicks(5)
+                                send(sender, port, "gdsCommandResult: "..msg)
+                            end
                         else
-                            print("Address check failed. Error: "..addressCheck)
+                            waitTicks(5)
+                            send(sender, port, "gdsCommandResult: Dialing error: "..errormsg)
                         end
                     end)
                 elseif command == "close" then
@@ -549,10 +556,19 @@ local EventListeners = {
                         if threads.dialing and threads.dialing:status()=="running" then 
                             threads.dialing:kill()
                             returnstr="Killed dialing thread."
+                            
                         elseif stargate.dialedAddress~="[]" then
                             stargate.abortDialing()
                             returnstr="Aborting dialing..."
+                            local hasClosed, err
+                            if irisType~="NULL" then
+                                hasClosed, err = waitForIris("OPENED", 0, false)
+                                if err then
+                                    print("Iris malfunction, cannot avoid kawoosh:", err)
+                                end
+                            end
                         end
+                        
                         print(returnstr)
                         waitTicks(5)
                         send(sender, port, "gdsCommandResult: " .. returnstr)
