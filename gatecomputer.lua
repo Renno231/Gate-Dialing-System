@@ -577,17 +577,17 @@ local EventListeners = {
                     lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-2
                     if currentTime - lastReceived[userprocessKey] > 1 then
                         lastReceived[userprocessKey] = currentTime
-                        if threads.iris then threads.iris:kill() end 
-                        threads.iris = thread.create(function()
-                            if args.irisValue then
-                                local totalIDCs = 0
-                                for i,v in pairs (settings.IDCs) do
-                                    totalIDCs = totalIDCs + 1
-                                end
-                                if totalIDCs == 0 or (args.IDC and settings.IDCs[args.IDC]) then
-                                    print("Iris access authorized.")
-                                    irisStatus = stargate.getIrisState()
-                                    local succ, err
+                        if threads.iris then threads.iris:kill() end
+                        if args.irisValue then
+                            local totalIDCs = 0
+                            for i,v in pairs (settings.IDCs) do
+                                totalIDCs = totalIDCs + 1
+                            end
+                            if totalIDCs == 0 or (args.IDC and settings.IDCs[args.IDC]) then
+                                print("Iris access authorized.")
+                                irisStatus = stargate.getIrisState()
+                                local succ, err
+                                threads.iris = thread.create(function()
                                     if args.irisValue == "toggle" then
                                         local newstate = irisStatus:match("OPEN") and "CLOSED" or "OPENED"
                                         succ, err = waitForIris(newstate)
@@ -599,9 +599,9 @@ local EventListeners = {
                                     irisStatus = stargate.getIrisState()
                                     print("Iris state is",irisStatus)
                                     send(sender, port, "gdsCommandResult: " .. (succ and ("Iris state set to "..irisStatus) or ("Iris error:"..(err and err or " unknown bug."))))
-                                end
+                                end)
                             end
-                        end)
+                        end
                     end
                 elseif command == "query" then
                     lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-6
