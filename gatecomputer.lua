@@ -203,7 +203,7 @@ local function sendIDC(code, timeout)
 end
 
 do --like waking up with your front door open
-    if gateStatus == "open" and irisType~="NULL" and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
+    if gateStatus == "open" and irisType~="NULL" and settings.lastWormhole == "incoming" and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
         print("Security threat detected. Closing iris.")
         stargate.sendMessageToIncoming("Iris closed. Resend IDC.")
         waitForIris("CLOSED", 0, false)
@@ -243,6 +243,8 @@ local EventListeners = {
     --stargate_dhd_chevron_engaged = event.listen("stargate_dhd_chevron_engaged", function(_, _, caller, num, lock, glyph) end),
 
     stargate_incoming_wormhole = event.listen("stargate_incoming_wormhole", function(_, _, caller, dialedAddressSize) 
+        settings.lastWormhole = "incoming"
+        writeSettingsFile()
         if stargate.getIrisState() == "OPENED" then
             stargate.toggleIris()
             print("Incoming wormhole.")
@@ -477,16 +479,19 @@ local EventListeners = {
                                 end
                             end
                             print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
+                            if settings.kawooshAvoidance then
+                                thread.create(function() 
+                                    repeat os.sleep(0.1) until gateStatus =="open"
+                                    waitTicks(20)
+                                    waitForIris("OPENED", 0)
+                                end)
+                            end
                             if engageResult == "stargate_engage" or engageResult == "dhd_engage" then
+                                settings.lastWormhole = "outgoing"
+                                writeSettingsFile()
                                 broadcast(settings.listeningPorts[1], "gdswakeup")
                                 send(sender, port, "gdsCommandResult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
-                                if settings.kawooshAvoidance then
-                                    thread.create(function() 
-                                        repeat os.sleep(0.1) until gateStatus =="open"
-                                        waitTicks(20)
-                                        waitForIris("OPENED", 0)
-                                    end)
-                                end
+                                
                                 if type(args.IDC)=="number" then
                                     waitUntilState("open")
                                     os.sleep(1)
@@ -553,7 +558,35 @@ local EventListeners = {
                         send(sender, port, "gdsCommandResult: " .. returnstr)
                     end
                 elseif command == "iris" then
-                    --todo
+                    lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-2
+                    if currentTime - lastReceived[userprocessKey] > 1 then
+                        lastReceived[userprocessKey] = currentTime
+                        if threads.iris then threads.iris:kill() end 
+                        threads.iris = thread.create(function()
+                            if args.irisValue then
+                                local totalIDCs = 0
+                                for i,v in pairs (settings.IDCs) do
+                                    totalIDCs = totalIDCs + 1
+                                end
+                                if totalIDCs == 0 or (args.IDC and settings.IDCs[args.IDC]) then
+                                    print("Iris access authorized.")
+                                    irisStatus = stargate.getIrisState()
+                                    local succ, err
+                                    if args.irisValue == "toggle" then
+                                        local newstate = irisStatus:match("OPEN") and "CLOSED" or "OPENED"
+                                        succ, err = waitForIris(newstate)
+                                    elseif args.irisValue == "open" or args.irisValue == "off" or args.irisValue == "false" then
+                                        succ, err = waitForIris("OPENED")
+                                    elseif args.irisValue == "close" or args.irisValue == "closed" or args.irisValue == "true" or args.irisValue == "on" then
+                                        succ, err = waitForIris("CLOSED")
+                                    end
+                                    irisStatus = stargate.getIrisState()
+                                    print("Iris state is",irisStatus)
+                                    send(sender, port, "gdsCommandResult: " .. (succ and ("Iris state set to "..irisStatus) or ("Iris error:"..(err and err or " unknown bug."))))
+                                end
+                            end
+                        end)
+                    end
                 elseif command == "query" then
                     lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-6
                     if currentTime - lastReceived[userprocessKey] > 5 then
