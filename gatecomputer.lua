@@ -556,10 +556,6 @@ local EventListeners = {
                         if threads.dialing and threads.dialing:status()=="running" then 
                             threads.dialing:kill()
                             returnstr="Killed dialing thread."
-                            
-                        elseif stargate.dialedAddress~="[]" then
-                            stargate.abortDialing()
-                            returnstr="Aborting dialing..."
                             local hasClosed, err
                             if irisType~="NULL" then
                                 hasClosed, err = waitForIris("OPENED", 0, false)
@@ -567,6 +563,10 @@ local EventListeners = {
                                     print("Iris malfunction, cannot avoid kawoosh:", err)
                                 end
                             end
+                        elseif stargate.dialedAddress~="[]" then
+                            stargate.abortDialing()
+                            returnstr="Aborting dialing..."
+                            
                         end
                         
                         print(returnstr)
