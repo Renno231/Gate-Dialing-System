@@ -415,7 +415,8 @@ commands = {
                 if irisValue == "open" or irisValue == "closed" or irisValue == "close" or irisValue == "on" or  irisValue == "off" or irisValue == "true" or irisValue == "false" or "toggle" then
                     returnstr = returnstr.. "Setting iris to "..irisValue..". "
                     local cmdPayload = {command = "iris", args = {irisValue = irisValue}, user = {name = tostring(settings.lastUser)}}
-                    cmdPayload.args.IDC = foundEntry.IDCs[args[6] or settings.lastUser] or -1
+                    cmdPayload.args.IDC = type(tonumber(args[6]))=="number" and tonumber(args[6]) or (foundEntry.IDCs[args[6] or settings.lastUser] or -1)
+                    returnstr = returnstr .. "IDC is "..tostring(cmdPayload.args.IDC)..". "
                     threads.gdsSend = thread.create(gdssend, foundEntry.UUID, settings.networkPort, cmdPayload) 
                 else
                     returnstr = returnstr.."Invalid argument for iris state. Must be on/off, open/closed, true/false, or toggle."
