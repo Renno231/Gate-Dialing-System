@@ -365,7 +365,7 @@ local EventListeners = {
                             print("Address check failed.")
                             os.exit()
                         end
-                        if gateStatus == "open" then
+                        if gateStatus == "open" and settings.lastWormhole == "incoming" then
                             print("Gate is open, must wait until incoming wormhole closes.")
                             waitUntilState("idle")
                         end
