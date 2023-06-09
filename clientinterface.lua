@@ -337,7 +337,7 @@ end
 --output window code end
 local commandDescriptions = {
     clear = "empties output buffer";
-    set = "modifies GDS settings such as modem range/radius, port/channel, and default dialing speed. e.g. set speed 10";
+    set = "modifies GDS settings such as modem range/radius, port/channel, and default dialing speed. e.g. set speed 10. Another example, set entry entryName/index iris open/closed/toggle.";
     quit = "closes GDS";
     get = "returns information about current settings such as remaining battery, network port, wireless range, etc";
     import = "imports AGS entries from /ags/gateEntries.ff";
@@ -406,6 +406,22 @@ commands = {
                 settings.powerSaving = false
             else
                 returnstr = "The third argument must be true/on or false/off."
+            end
+        elseif args[2] == "entry" and args[3] and args[4] == "iris" then
+            local foundEntry = findEntry(args[3])
+            local irisValue = args[5] or "toggle"
+            if foundEntry then
+                returnstr = "Found entry "..foundEntry.Name..". "
+                if irisValue == "open" or irisValue == "closed" or irisValue == "close" or irisValue == "on" or  irisValue == "off" or irisValue == "true" or irisValue == "false" or "toggle" then
+                    returnstr = returnstr.. "Setting iris to "..irisValue..". "
+                    local cmdPayload = {command = "iris", args = {irisValue = irisValue}, user = {name = tostring(settings.lastUser)}}
+                    cmdPayload.args.IDC = foundEntry.IDCs[args[6] or settings.lastUser] or -1
+                    threads.gdsSend = thread.create(gdssend, foundEntry.UUID, settings.networkPort, cmdPayload) 
+                else
+                    returnstr = returnstr.."Invalid argument for iris state. Must be on/off, open/closed, true/false, or toggle."
+                end
+            else
+                returnstr = "Entry not found. Check your spelling."
             end
         elseif args[2] then
             returnstr = "Invalid sub-command: "..tostring(args[2])
