@@ -26,6 +26,7 @@ local settings = {
     runInBackground = true;
     showPrints = false;
     kawooshAvoidance = true;
+    autoGitUpdate = true;
 }
 local _print = print
 local function print(...)
@@ -145,6 +146,90 @@ local function waitTicks(ticks)
     os.sleep(ticks/checkTPS(0.1) - 0.1)
 end
 
+local function strsplit(inputstr, sep)
+    if sep == nil then
+        sep = "%s"
+    end
+    local t={}
+    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+        table.insert(t, str)
+    end
+    return t
+end
+
+local function downloadFile(filePath, directory)
+    local internet = component.isAvailable"internet" and component.internet
+    if not internet then 
+        print("No internet card detected, cannot download "..filePath.." to "..directory) 
+        return false, "No internet card detected."
+    end
+    print("Downloading..."..filePath)
+    
+    local downloaded, response = pcall(internet.request, "https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/"..filePath)
+    if not downloaded then
+        print(response())
+        return false, response
+    end
+    local fileName = strsplit(filePath,"/")
+    local success, err = pcall(function()
+        fileName = fileName[#fileName]
+        local absolutePath = (directory or "")..fileName
+        if type(directory)=="string" and directory~="" then
+            if not filesystem.isDirectory(directory) then
+                filesystem.makeDirectory(directory)
+            end
+        end
+        local file, err = io.open(absolutePath, "w")
+        if file == nil then error(err) end
+        for chunk in response do
+            file:write(chunk)
+        end
+        file:close()
+    end)
+    if not success then
+        print("Unable to download"..tostring(fileName))
+        print(err)
+    else
+        err = "Downloaded file."
+    end
+    return success, err
+end
+
+local function gitUpdate()
+    if not component.isAvailable("internet") then return false, "Internet card not found" end
+    --if internet card, then request github info and pull update, return results, and reboot
+    
+    local succ, response = pcall(component.internet.request, "https://api.github.com/repos/Renno231/Gate-Dialing-System/commits?path=gatecomputer.lua&page=1&per_page=1") --, nil, {["user-agent"]="Wget/OpenComputers"}) 
+    if not succ then return false, response() end
+    local read
+    repeat
+        read = response.read() 
+    until read~="" --print(i, type(read), read) end
+    checkTime()
+    local commitdate = strsplit(read, '",\"')[20] --the date
+    response.finishConnect()
+    commitdate = {commitdate:sub(1,4), commitdate:sub(6,7), commitdate:sub(9,10), commitdate:sub(12,13), commitdate:sub(15,16)}
+    local lastmodified = os.date("%Y/%m/%d/%H/%M", filesystem.lastModified("/gds/gatecomputer.lua")/1000)
+    lastmodified = strsplit(lastmodified, "//")
+    local yearDiff = lastmodified[1] - commitdate[1]
+    local shouldUpdate = yearDiff < 0 --year check is easiest
+    --year check first, then month, then convert days and hours into minutes, add to minutes for total, then compare
+    if yearDiff == 0 then --after year check
+        local monthDiff = lastmodified[2] - commitdate[2]
+        shouldUpdate = monthDiff < 0 --month check
+        if monthDiff == 0 then --minutes in the month
+            shouldUpdate = ((lastmodified[3] * 3600) + (lastmodified[4] * 60) + lastmodified[5] ) - ((commitdate[3] * 3600) + (commitdate[4] * 60) + commitdate[5]) < 0
+        end
+    end
+    
+    if shouldUpdate then
+        return downloadFile("gatecomputer.lua","/gds/")
+    else
+        return false, "Gate computer already up to date." --maybe include how long since it was updated?
+    end
+    
+end
+
 local function waitUntilState(state, step)
     state = state or "idle"
     step = step or 0
@@ -202,7 +287,7 @@ local function sendIDC(code, timeout)
     return (pulls > timeout or msg==nil) and "No IDC response." or msg:sub(1, -4) 
 end
 
-do --like waking up with your front door open
+do --like waking up with your front door open, doesn't work very well yet
     if gateStatus == "open" and irisType~="NULL" and settings.lastWormhole == "incoming" and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
         print("Security threat detected. Closing iris.")
         stargate.sendMessageToIncoming("Iris closed. Resend IDC.")
@@ -278,8 +363,9 @@ local EventListeners = {
             local currentTime = computer.uptime()
             if msg:sub(1, 4) == "gds{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then -- maybe send "username:{}" ?
                 print("Receiving instructions...")
-                local validPayload, msgdata = serialization.unserialize(msg:sub(4)) --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}; might need to wrap this in something like pcall
-                if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
+                local msgdata, payloadError = serialization.unserialize(msg:sub(4)) --{comman = cmd; args = {}; user = {name=username; uuid = uuid}}; might need to wrap this in something like pcall
+                print( msgdata)
+                if msgdata==nil or payloadError or type(msgdata)~="table" then print("Invalid message payload") return end
                 local command = msgdata.command
                 local args, user = msgdata.args, msgdata.user
                 local userprocessKey = command..sender --useful for tracking actions by a specific user instead of total interaction by a specific user
@@ -434,12 +520,13 @@ local EventListeners = {
                             print("Valid address.")
                             print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed).." | mustwaitUntilState = "..tostring(mustwaitUntilState))
                             irisType = tostring(stargate.getIrisType())
-                            local irisToggleGlyph = math.max(glyphStart, totalGlyphs -  math.ceil(((irisType:match("IRIS_") and 3) or (irisType == "SHIELD" and 1) or 1) / (delayTime > 0 and delayTime or 1)))
+                            local irisCloseTime = ((irisType:match("IRIS_") and 3) or (irisType == "SHIELD" and 1) or 1)
+                            local irisToggleGlyph = math.max(glyphStart, totalGlyphs -  math.ceil(irisCloseTime / (delayTime > 0 and delayTime or 1)))
                             for i = glyphStart, totalGlyphs do
                                 print("> Glyph "..i)
                                 local hasClosed, err
-                                if settings.kawooshAvoidance and i == irisToggleGlyph and irisType~="NULL" then
-                                    hasClosed, err = waitForIris("CLOSED", 0, false)
+                                if settings.kawooshAvoidance and (i == irisToggleGlyph or (args.speed < irisCloseTime and not mustwaitUntilState) ) and irisType~="NULL" then
+                                    hasClosed, err = waitForIris("CLOSED", 0, (args.speed < irisCloseTime and not mustwaitUntilState) )
                                     if err then
                                         print("Iris malfunction, cannot avoid kawoosh:", err)
                                     end
@@ -588,7 +675,7 @@ local EventListeners = {
                                 irisStatus = stargate.getIrisState()
                                 local succ, err
                                 threads.iris = thread.create(function()
-                                    if args.irisValue == "toggle" then
+                                    if args.irisValue == "toggle" then --need to rewrite and simplify this (probably migrate this logic to clientinterface)
                                         local newstate = irisStatus:match("OPEN") and "CLOSED" or "OPENED"
                                         succ, err = waitForIris(newstate)
                                     elseif args.irisValue == "open" or args.irisValue == "off" or args.irisValue == "false" then
@@ -614,9 +701,17 @@ local EventListeners = {
                         local incomingFileHeap = {...}
                         --unfinished
                     else
-                        --if internet card, then request github info and pull update, return results, and reboot
-                        send(sender, port, "gdsCommandResult: Insufficient network permissions. Password is invalid or password is not set.")
+                        local succ, err = gitUpdate()
+                        local returnstr = "gdsCommandResult: " .. (succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
+                        send(sender, port, returnstr )
+                        if succ then --and finds autostart, else report back that computer needs manual reboot for update to take effect
+                            computer.shutdown(true)
+                        else
+
+                        end
                     end
+                elseif command == "kawooshavoidance" then
+                    --toggle kawoosh avoidance
                 end
             end
         end
@@ -686,6 +781,19 @@ local EventListeners = {
         end
     )
 }
+
+if settings.autoGitUpdate then
+    local function autoPull() 
+        local succ, err = gitUpdate() 
+        print("autoGitUpdate:",succ,err)
+        if succ then --check for autostart
+            computer.shutdown(true) 
+        end 
+    end
+    autoPull()
+    EventListeners.gitAutoUpdate = event.timer(60 * 60, autoPull, math.huge)
+end
+
 if not settings.runInBackground then
     while isRunning and HadNoError do
         os.sleep(0.1)
