@@ -217,8 +217,9 @@ local function gitUpdate(file, dir, forceupdate)
         print("Commit date missing from data. \n",read)
         return false, "Commit date missing from data."
     end
+    local absolutePath = dir..file
     commitdate = {commitdate:sub(1,4), commitdate:sub(6,7), commitdate:sub(9,10), commitdate:sub(12,13), commitdate:sub(15,16)}
-    local lastmodified = settings.gitPullHistory[dir..file] or os.date("%Y/%m/%d/%H/%M", filesystem.lastModified("/gds/gatecomputer.lua")/1000)
+    local lastmodified = settings.gitPullHistory[absolutePath] or os.date("%Y/%m/%d/%H/%M", filesystem.lastModified(absolutePath)/1000)
     lastmodified = strsplit(lastmodified, "//")
     local yearDiff = lastmodified[1] - commitdate[1]
     local shouldUpdate = yearDiff < 0 --year check is easiest
@@ -234,7 +235,7 @@ local function gitUpdate(file, dir, forceupdate)
     if shouldUpdate then
         local succ, err = downloadFile(file, dir)
         if succ then --file has been updated, so lastModified has changed to now
-            settings.gitPullHistory[dir..file] = os.date("%Y/%m/%d/%H/%M", filesystem.lastModified("/gds/gatecomputer.lua")/1000)
+            settings.gitPullHistory[absolutePath] = os.date("%Y/%m/%d/%H/%M", filesystem.lastModified(absolutePath)/1000)
             writeSettingsFile()
         end
         return succ, err
