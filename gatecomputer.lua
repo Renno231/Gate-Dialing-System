@@ -269,7 +269,7 @@ local function waitForIris(desiredstate, step, shouldyield) --normal iris is 3 s
     step = step or 0
     irisStatus = stargate.getIrisState()
     local succ, err
-    if irisStatus == desiredstate then 
+    if irisStatus == desiredstate or tostring(stargate.getIrisType()) == "NULL" then 
         return true
     end
     if irisStatus:match("ING") then --already moving
@@ -511,13 +511,12 @@ local EventListeners = {
                                 end
                                 hasEngagedGate = stargate.engageGate()
                                 print("Engaging stargate: "..tostring(hasEngagedGate), hasEngagedGate and irisType~="NULL")
-                                if hasEngagedGate and irisType~="NULL" then
-                                    --thread.create(function() 
+                                if irisType~="NULL" then
+                                    if hasEngagedGate then
                                         repeat os.sleep(0.1) until gateStatus =="open"
                                         waitTicks(20)
-                                        
-                                        waitForIris("OPENED", 0)
-                                    --end)
+                                    end
+                                    waitForIris("OPENED", 0)
                                 end
                             end
                         end
@@ -603,8 +602,10 @@ local EventListeners = {
                         irisStatus = stargate.getIrisState()
                         if settings.kawooshAvoidance and irisType~="NULL" and irisStatus == "CLOSED" then
                             thread.create(function() 
-                                repeat os.sleep(0.1) until gateStatus =="open"
-                                waitTicks(20)
+                                if not engageResult:match("fail") then 
+                                    repeat os.sleep(0.1) until gateStatus =="open"
+                                    waitTicks(20)
+                                end
                                 waitForIris("OPENED", 0)
                             end)
                         end
