@@ -244,6 +244,16 @@ local function getRealTime()
     return math.floor(filesystem.lastModified("/tmp/.time") / 1000)
 end
 
+local optionEquivalence = {
+    ["open"] = true,
+    ["closed"] = false,
+    ["close"] = false,
+    ["on"] = true,
+    ["off"] = false,
+    ["true"] = true ,
+    ["false"] = false,
+}
+
 --main code
 term.clear()
 
@@ -412,9 +422,15 @@ commands = {
             local irisValue = args[5] or "toggle"
             if foundEntry then
                 returnstr = "Found entry "..foundEntry.Name..". "
-                if irisValue == "open" or irisValue == "closed" or irisValue == "close" or irisValue == "on" or  irisValue == "off" or irisValue == "true" or irisValue == "false" or "toggle" then
+                local equivalentOption = optionEquivalence[irisValue]
+                if equivalentOption~=nil or irisValue == "toggle" then
                     returnstr = returnstr.. "Setting iris to "..irisValue..". "
-                    local cmdPayload = {command = "iris", args = {irisValue = irisValue}, user = {name = tostring(settings.lastUser)}}
+                    local cmdPayload = {command = "iris", args = {irisValue }, user = {name = tostring(settings.lastUser)}}
+                    if equivalentOption~=nil then
+                        cmdPayload.args.irisValue = equivalentOption
+                    elseif irisValue == "toggle" then
+                       cmdPayload.args.irisValue = "toggle"
+                    end
                     cmdPayload.args.IDC = type(tonumber(args[6]))=="number" and tonumber(args[6]) or (foundEntry.IDCs[args[6] or settings.lastUser] or -1)
                     returnstr = returnstr .. "IDC is "..tostring(cmdPayload.args.IDC)..". "
                     threads.gdsSend = thread.create(gdssend, foundEntry.UUID, settings.networkPort, cmdPayload) 
