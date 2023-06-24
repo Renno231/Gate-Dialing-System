@@ -717,6 +717,7 @@ local EventListeners = {
                             print("Waiting for threads to finish execution before updating..")
                             thread.waitForAll(threads)
                         end
+                        print("Starting update thread..")
                         threads.update = thread.create(function() 
                             if settings.networkAdminPassword~=nil and settings.networkAdminPassword == args.networkPassword then
                                 --unfinished
@@ -820,7 +821,7 @@ if settings.autoGitUpdate then
         print("autoGitUpdate:",succ,err)
         if succ then --check for autostart
             print("Rebooting..")
-            os.sleep(1)
+            os.sleep(3)
             computer.shutdown(true) 
         end 
     end
