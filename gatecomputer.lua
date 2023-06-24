@@ -212,6 +212,10 @@ local function gitUpdate(file, dir, forceupdate)
     checkTime()
     local commitdate = strsplit(read, '",\"')[20] --the date
     response.finishConnect()
+    if not commitdate then 
+        print("Commit date missing from data. \n",read)
+        return false, "Commit date missing from data."
+    end
     commitdate = {commitdate:sub(1,4), commitdate:sub(6,7), commitdate:sub(9,10), commitdate:sub(12,13), commitdate:sub(15,16)}
     local lastmodified = settings.gitPullHistory[dir..file] or os.date("%Y/%m/%d/%H/%M", filesystem.lastModified("/gds/gatecomputer.lua")/1000)
     lastmodified = strsplit(lastmodified, "//")
