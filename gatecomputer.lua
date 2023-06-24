@@ -195,10 +195,13 @@ local function downloadFile(filePath, directory)
     return success, err
 end
 
-local function gitUpdate()
+local function gitUpdate(file, dir, forceupdate)
+    if type(file) ~="string" or type(dir) ~="string" then return false, "Incorrect arguments "..tostring(file)..", "..tostring(dir) end
     if not component.isAvailable("internet") then return false, "Internet card not found" end
     --if internet card, then request github info and pull update, return results, and reboot
-    
+    if settings.gitPullHistory == nil then
+        settings.gitPullHistory = {} 
+    end
     local succ, response = pcall(component.internet.request, "https://api.github.com/repos/Renno231/Gate-Dialing-System/commits?path=gatecomputer.lua&page=1&per_page=1") --, nil, {["user-agent"]="Wget/OpenComputers"}) 
     if not succ then return false, response() end
     local read
@@ -209,7 +212,7 @@ local function gitUpdate()
     local commitdate = strsplit(read, '",\"')[20] --the date
     response.finishConnect()
     commitdate = {commitdate:sub(1,4), commitdate:sub(6,7), commitdate:sub(9,10), commitdate:sub(12,13), commitdate:sub(15,16)}
-    local lastmodified = os.date("%Y/%m/%d/%H/%M", filesystem.lastModified("/gds/gatecomputer.lua")/1000)
+    local lastmodified = settings.gitPullHistory[dir..file] or os.date("%Y/%m/%d/%H/%M", filesystem.lastModified("/gds/gatecomputer.lua")/1000)
     lastmodified = strsplit(lastmodified, "//")
     local yearDiff = lastmodified[1] - commitdate[1]
     local shouldUpdate = yearDiff < 0 --year check is easiest
@@ -221,9 +224,14 @@ local function gitUpdate()
             shouldUpdate = ((lastmodified[3] * 3600) + (lastmodified[4] * 60) + lastmodified[5] ) - ((commitdate[3] * 3600) + (commitdate[4] * 60) + commitdate[5]) < 0
         end
     end
-    
+    if forceupdate then shouldUpdate = forceupdate end
     if shouldUpdate then
-        return downloadFile("gatecomputer.lua","/gds/")
+        local succ, err = downloadFile(file, dir)
+        if succ then --file has been updated, so lastModified has changed to now
+            settings.gitPullHistory[dir..file] = os.date("%Y/%m/%d/%H/%M", filesystem.lastModified("/gds/gatecomputer.lua")/1000)
+            writeSettingsFile()
+        end
+        return succ, err
     else
         return false, "Gate computer already up to date." --maybe include how long since it was updated?
     end
@@ -697,18 +705,28 @@ local EventListeners = {
                         threads.query = thread.create(send, sender, port, gatedataTable)
                     end
                 elseif command == "update" then
-                    if settings.networkAdminPassword~=nil and settings.networkAdminPassword == args.networkPassword then
-                        local incomingFileHeap = {...}
-                        --unfinished
-                    else
-                        local succ, err = gitUpdate()
-                        local returnstr = "gdsCommandResult: " .. (succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
-                        send(sender, port, returnstr )
-                        if succ then --and finds autostart, else report back that computer needs manual reboot for update to take effect
-                            computer.shutdown(true)
-                        else
+                    lastReceived[command] = lastReceived[command] or currentTime-6
+                    if currentTime - lastReceived[command] > 30 then --and not already updating
+                        --if not force then
+                        --  thread.waitForAll(threads)
+                        --end
+                        threads.update = thread.create(function() 
+                            if settings.networkAdminPassword~=nil and settings.networkAdminPassword == args.networkPassword then
+                                --unfinished
+                                --local incomingFileHeap = {...}
+                            else
+                                --make sure theres no important threads running, but override if force is provided
+                                local succ, err = gitUpdate("gatecomputer.lua","/gds/") --need to work in option for force
+                                local returnstr = "gdsCommandResult: " .. (succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
+                                send(sender, port, returnstr )
+                                if succ then --and finds autostart, else report back that computer needs manual reboot for update to take effect
+                                    os.sleep(3)
+                                    computer.shutdown(true)
+                                else
 
-                        end
+                                end
+                            end
+                        end)
                     end
                 elseif command == "kawooshavoidance" then
                     --toggle kawoosh avoidance
@@ -783,8 +801,8 @@ local EventListeners = {
 }
 
 if settings.autoGitUpdate then
-    local function autoPull() 
-        local succ, err = gitUpdate() 
+    local function autoPull(forceupdate) 
+        local succ, err = gitUpdate("gatecomputer.lua","/gds/",forceupdate) 
         print("autoGitUpdate:",succ,err)
         if succ then --check for autostart
             computer.shutdown(true) 
