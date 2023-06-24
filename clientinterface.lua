@@ -912,8 +912,8 @@ local EventListeners = {
         local timeReceived = computer.uptime()
         if type(msg) == "string" then
             if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
-                local validPayload, msgdata = serialization.unserialize(msg:sub(8)) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
-                if not msgdata or not validPayload or type(msgdata)~="table" then print("Invalid message payload") return end
+                local msgdata, payloadError = serialization.unserialize(msg:sub(8)) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
+                if msgdata==nil or payloadError or type(msgdata)~="table" then print("Invalid message payload") return end
                 local newGateType = msgdata.gateType
                 local newAddress = msgdata.Address
                 if msgdata.uuid == sender then
