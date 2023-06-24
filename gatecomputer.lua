@@ -690,7 +690,8 @@ local EventListeners = {
                     if currentTime - lastReceived[userprocessKey] > 1 then
                         lastReceived[userprocessKey] = currentTime
                         if threads.iris then threads.iris:kill() end
-                        if args.irisValue then
+                        print("hmm",args.irisValue)
+                        if args.irisValue~=nil then
                             local totalIDCs = 0
                             for i,v in pairs (settings.IDCs) do
                                 totalIDCs = totalIDCs + 1
