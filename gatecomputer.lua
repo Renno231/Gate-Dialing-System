@@ -183,6 +183,7 @@ local function downloadFile(filePath, directory)
         local file, err = io.open(absolutePath, "w")
         if file == nil then error(err) end
         for chunk in response do
+            print(chunk)
             file:write(chunk)
         end
         file:close()
@@ -723,8 +724,10 @@ local EventListeners = {
                             else
                                 --make sure theres no important threads running, but override if force is provided
                                 local succ, err = gitUpdate("gatecomputer.lua","/gds/", args.force) --need to work in option for force
+                                print("Attempting to update..")
                                 local returnstr = "gdsCommandResult: " .. (succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
                                 send(sender, port, returnstr )
+                                print(succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
                                 if succ then --and finds autostart, else report back that computer needs manual reboot for update to take effect
                                     os.sleep(3)
                                     computer.shutdown(true)
