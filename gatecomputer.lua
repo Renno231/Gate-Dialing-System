@@ -18,6 +18,7 @@ local SettingsFile = "/gds/settings.cfg"
 local settings = {
     allowedList = {};
     IDCs = {};
+    gitPullHistory = {};
     listeningPorts = {160};
     networkAdminPassword = false;
     networkAdminUUID = false;
@@ -811,6 +812,8 @@ if settings.autoGitUpdate then
         local succ, err = gitUpdate("gatecomputer.lua","/gds/",forceupdate) 
         print("autoGitUpdate:",succ,err)
         if succ then --check for autostart
+            print("Rebooting..")
+            os.sleep(1)
             computer.shutdown(true) 
         end 
     end
