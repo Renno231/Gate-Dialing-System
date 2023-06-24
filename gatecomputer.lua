@@ -686,9 +686,9 @@ local EventListeners = {
                                     if args.irisValue == "toggle" then --need to rewrite and simplify this (probably migrate this logic to clientinterface)
                                         local newstate = irisStatus:match("OPEN") and "CLOSED" or "OPENED"
                                         succ, err = waitForIris(newstate)
-                                    elseif args.irisValue == "open" or args.irisValue == "off" or args.irisValue == "false" then
+                                    elseif args.irisValue then
                                         succ, err = waitForIris("OPENED")
-                                    elseif args.irisValue == "close" or args.irisValue == "closed" or args.irisValue == "true" or args.irisValue == "on" then
+                                    elseif args.irisValue == false then
                                         succ, err = waitForIris("CLOSED")
                                     end
                                     irisStatus = stargate.getIrisState()
@@ -707,29 +707,35 @@ local EventListeners = {
                 elseif command == "update" then
                     lastReceived[command] = lastReceived[command] or currentTime-6
                     if currentTime - lastReceived[command] > 30 then --and not already updating
-                        --if not force then
-                        --  thread.waitForAll(threads)
-                        --end
+                        if not args.force then
+                            print("Waiting for threads to finish execution before updating..")
+                            thread.waitForAll(threads)
+                        end
                         threads.update = thread.create(function() 
                             if settings.networkAdminPassword~=nil and settings.networkAdminPassword == args.networkPassword then
                                 --unfinished
                                 --local incomingFileHeap = {...}
                             else
                                 --make sure theres no important threads running, but override if force is provided
-                                local succ, err = gitUpdate("gatecomputer.lua","/gds/") --need to work in option for force
+                                local succ, err = gitUpdate("gatecomputer.lua","/gds/", args.force) --need to work in option for force
                                 local returnstr = "gdsCommandResult: " .. (succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
                                 send(sender, port, returnstr )
                                 if succ then --and finds autostart, else report back that computer needs manual reboot for update to take effect
                                     os.sleep(3)
                                     computer.shutdown(true)
                                 else
-
+                                    --inform tablet of status?
                                 end
                             end
                         end)
                     end
                 elseif command == "kawooshavoidance" then
                     --toggle kawoosh avoidance
+                    if type(args.kawooshValue) == "boolean" then
+                        settings.kawooshAvoidance = args.kawooshValue
+                        writeSettingsFile()
+                        send(sender, port, "gdsCommandResult: kawooshAvoidance set to "..tostring(settings.kawooshAvoidance))
+                    end
                 end
             end
         end
