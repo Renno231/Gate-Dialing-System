@@ -829,6 +829,23 @@ commands = {
         end
         return returnstr
     end;
+    update = function(...)
+        local args = {...}
+        local returnstr = "Insufficient arguments."
+        if args[2] == "entry" then
+            returnstr = returnstr.." Missing entry index or name."
+            local gateA, gateAIndex = findEntry(args[3])
+            if gateA then
+                returnstr = "Requesting entry "..gateA.Name.." to update..."
+                if args[4] and args[4]~="f" or args[4]~="force" or args[4]~="-f" then 
+                    returnstr = returnstr.." Invalid 4th argument, try force or f or -f."
+                end
+                threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="update", args = {force = args[4] and (args[4] == "f" or args[4] == "force" or args[4] == "-f" )}, user = {name = tostring(settings.lastUser)}})
+            end
+        --elseif args[2] then
+            --update tablet
+        end
+    end;
 }
 local function setAliases(func, ...)
     local args = {...}
