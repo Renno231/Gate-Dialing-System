@@ -165,12 +165,14 @@ local function downloadFile(filePath, directory)
         return false, "No internet card detected."
     end
     print("Downloading..."..filePath)
-    
+    --response = internet.request("https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/gatecomputes.lua")
+    --idk why this code is behaving differently in here... doesn't make any sense at all
     local downloaded, response = pcall(internet.request, "https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/"..filePath)
     if not downloaded then
         print(response())
         return false, response
     end
+    
     local fileName = strsplit(filePath,"/")
     local success, err = pcall(function()
         fileName = fileName[#fileName]
@@ -180,11 +182,14 @@ local function downloadFile(filePath, directory)
                 filesystem.makeDirectory(directory)
             end
         end
-        local file, err = io.open(absolutePath, "w")
-        if file == nil then error(err) end
-        for chunk in response do
-            print(chunk)
-            file:write(chunk)
+        local file, fileErr = io.open(absolutePath, "w")
+        if file == nil then error(fileErr) end
+        local read = true
+        while read~=nil do
+            read = response.read()
+            if read~="" and read then
+                file:write(read)
+            end
         end
         file:close()
     end)
@@ -194,6 +199,8 @@ local function downloadFile(filePath, directory)
     else
         err = "Downloaded file."
     end
+    response.finishConnect()
+    response.close()
     return success, err
 end
 
@@ -205,14 +212,17 @@ local function gitUpdate(file, dir, forceupdate)
         settings.gitPullHistory = {} 
     end
     local succ, response = pcall(component.internet.request, "https://api.github.com/repos/Renno231/Gate-Dialing-System/commits?path=gatecomputer.lua&page=1&per_page=1") --, nil, {["user-agent"]="Wget/OpenComputers"}) 
+    
     if not succ then return false, response() end
     local read
     repeat
         read = response.read() 
     until read~="" --print(i, type(read), read) end
+    response.finishConnect()
+    response.close()
     checkTime()
     local commitdate = strsplit(read, '",\"')[20] --the date
-    response.finishConnect()
+    
     if not commitdate then 
         print("Commit date missing from data. \n",read)
         return false, "Commit date missing from data."
@@ -712,7 +722,7 @@ local EventListeners = {
                         threads.query = thread.create(send, sender, port, gatedataTable)
                     end
                 elseif command == "update" then
-                    lastReceived[command] = lastReceived[command] or currentTime-6
+                    lastReceived[command] = lastReceived[command] or currentTime-35
                     if currentTime - lastReceived[command] > 30 then --and not already updating
                         if not args.force then
                             print("Waiting for threads to finish execution before updating..")
@@ -731,7 +741,7 @@ local EventListeners = {
                                 send(sender, port, returnstr )
                                 print(succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
                                 if succ then --and finds autostart, else report back that computer needs manual reboot for update to take effect
-                                    os.sleep(3)
+                                    os.sleep(5)
                                     computer.shutdown(true)
                                 else
                                     --inform tablet of status?
@@ -822,7 +832,7 @@ if settings.autoGitUpdate then
         print("autoGitUpdate:",succ,err)
         if succ then --check for autostart
             print("Rebooting..")
-            os.sleep(3)
+            os.sleep(5)
             computer.shutdown(true) 
         end 
     end
