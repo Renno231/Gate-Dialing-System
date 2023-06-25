@@ -159,7 +159,7 @@ local function strsplit(inputstr, sep)
 end
 
 local function downloadFile(filePath, directory)
-    local internet = component.isAvailable"internet" and component.internet
+    local internet = component.isAvailable"internet" and require("internet")
     if not internet then 
         print("No internet card detected, cannot download "..filePath.." to "..directory) 
         return false, "No internet card detected."
@@ -184,12 +184,8 @@ local function downloadFile(filePath, directory)
         end
         local file, fileErr = io.open(absolutePath, "w")
         if file == nil then error(fileErr) end
-        local read = true
-        while read~=nil do
-            read = response.read()
-            if read~="" and read then
-                file:write(read)
-            end
+        for chunk in response do
+            file:write(chunk)
         end
         file:close()
     end)
@@ -199,8 +195,6 @@ local function downloadFile(filePath, directory)
     else
         err = "Downloaded file."
     end
-    response.finishConnect()
-    response.close()
     return success, err
 end
 
@@ -211,15 +205,21 @@ local function gitUpdate(file, dir, forceupdate)
     if settings.gitPullHistory == nil then
         settings.gitPullHistory = {} 
     end
-    local succ, response = pcall(component.internet.request, "https://api.github.com/repos/Renno231/Gate-Dialing-System/commits?path=gatecomputer.lua&page=1&per_page=1") --, nil, {["user-agent"]="Wget/OpenComputers"}) 
+    local succ, response = pcall(component.internet.request, "https://api.github.com/repos/Renno231/Gate-Dialing-System/commits?path="..file.."&page=1&per_page=1") --, nil, {["user-agent"]="Wget/OpenComputers"}) 
     
     if not succ then return false, response() end
+    local ready, reason
+    repeat
+        ready, reason = response.finishConnect()
+    until ready or reason
+    if (not ready) then
+        return nil, reason
+    end
     local read
     repeat
         read = response.read() 
     until read~="" --print(i, type(read), read) end
-    response.finishConnect()
-    response.close()
+    
     checkTime()
     local commitdate = strsplit(read, '",\"')[20] --the date
     
@@ -252,7 +252,6 @@ local function gitUpdate(file, dir, forceupdate)
     else
         return false, "Gate computer already up to date." --maybe include how long since it was updated?
     end
-    
 end
 
 local function waitUntilState(state, step)
