@@ -317,7 +317,9 @@ local function displayOutputBuffer()
         outputWindow:write(0, verticalheight-i, outputBuffer[i])
     end
 end
-
+--could use unlimited size array,  but would need to unset any unneeded info (outputBuffer[index] = nil)
+--then iterate with while loop and line counting to account for blanks (bufferViewIndex = int, starting index of where draw from the buffer)
+--though for security, since process IDs will be integers corresponding to outputBuffer, make a pointer to the entry which is attached to the command inside of the process table
 function recordToOutput(...)
     local args = {...}
     if #args>0 then
@@ -432,6 +434,7 @@ commands = {
                        cmdPayload.args.irisValue = "toggle"
                     end
                     cmdPayload.args.IDC = type(tonumber(args[6]))=="number" and tonumber(args[6]) or (foundEntry.IDCs[args[6] or settings.lastUser] or -1)
+                    print(foundEntry.IDCs[settings.lastUser])
                     returnstr = returnstr .. "IDC is "..tostring(cmdPayload.args.IDC)..". "
                     threads.gdsSend = thread.create(gdssend, foundEntry.UUID, settings.networkPort, cmdPayload) 
                 else
@@ -597,7 +600,8 @@ commands = {
             local foundEntry = findEntry(args[3])
             local idcKey = args[5] or settings.lastUser
             if type(foundEntry)=="table" then
-                foundEntry.IDCs[idcKey] = tonumber(args[4])
+                local idcIsNumber = tonumber(args[4])
+                foundEntry.IDCs[idcKey] = idcIsNumber and idcIsNumber or args[4]
                 returnstr = 'Added IDC "'..args[4]..'" to entry '..foundEntry.Name.." with key "..idcKey
                 writeToDatabaseFile()
             else
@@ -840,7 +844,7 @@ commands = {
                 if args[4] and args[4]~="f" or args[4]~="force" or args[4]~="-f" then 
                     returnstr = returnstr.." Invalid 4th argument, try force or f or -f."
                 end
-                threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="update", args = {force = args[4] and (args[4] == "f" or args[4] == "force" or args[4] == "-f" )}, user = {name = tostring(settings.lastUser)}})
+                threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="update", args = {force = args[4] and ((args[4] == "f" or args[4] == "force" or args[4] == "-f" ) and "force")}, user = {name = tostring(settings.lastUser)}})
             end
         --elseif args[2] then
             --update tablet
