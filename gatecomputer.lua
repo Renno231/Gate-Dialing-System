@@ -690,16 +690,22 @@ local EventListeners = {
                     if currentTime - lastReceived[userprocessKey] > 1 then
                         lastReceived[userprocessKey] = currentTime
                         if threads.iris then threads.iris:kill() end
-                        print("hmm",args.irisValue)
-                        if args.irisValue~=nil then
-                            local totalIDCs = 0
-                            for i,v in pairs (settings.IDCs) do
-                                totalIDCs = totalIDCs + 1
+                        irisType = tostring(stargate.getIrisType())
+                    
+                        local totalIDCs = 0
+                        for i,v in pairs (settings.IDCs) do
+                            totalIDCs = totalIDCs + 1
+                        end
+                        local validIDC = args.IDC and settings.IDCs[args.IDC]
+                        if totalIDCs == 0 or validIDC then
+                             
+                            print("Iris access authorized.")
+                            irisStatus = stargate.getIrisState()
+                            local succ, err
+                            if validIDC and irisType=="NULL" then
+                                send(sender, port, "gdsCommandResult: Iris not detected.")
                             end
-                            if totalIDCs == 0 or (args.IDC and settings.IDCs[args.IDC]) then
-                                print("Iris access authorized.")
-                                irisStatus = stargate.getIrisState()
-                                local succ, err
+                            if irisType~="NULL" then
                                 threads.iris = thread.create(function()
                                     if args.irisValue == "toggle" then --need to rewrite and simplify this (probably migrate this logic to clientinterface)
                                         local newstate = irisStatus:match("OPEN") and "CLOSED" or "OPENED"
@@ -714,6 +720,11 @@ local EventListeners = {
                                     send(sender, port, "gdsCommandResult: " .. (succ and ("Iris state set to "..irisStatus) or ("Iris error:"..(err and err or " unknown bug."))))
                                 end)
                             end
+                        else
+                            send(sender, port, "gdsCommandResult: Invalid IDC.")
+                            --if stargate.getIrisState() == "OPENED" then --might need to wait to make sure no one is coming through if that's possible, or wait extra long if they have sent the wrong code before
+                            --    stargate.toggleIris()
+                            --end
                         end
                     end
                 elseif command == "query" then
