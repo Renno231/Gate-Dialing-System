@@ -434,7 +434,6 @@ commands = {
                        cmdPayload.args.irisValue = "toggle"
                     end
                     cmdPayload.args.IDC = type(tonumber(args[6]))=="number" and tonumber(args[6]) or (foundEntry.IDCs[args[6] or settings.lastUser] or -1)
-                    print(foundEntry.IDCs[settings.lastUser])
                     returnstr = returnstr .. "IDC is "..tostring(cmdPayload.args.IDC)..". "
                     threads.gdsSend = thread.create(gdssend, foundEntry.UUID, settings.networkPort, cmdPayload) 
                 else
