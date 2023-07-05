@@ -12,7 +12,7 @@ local sides = require("sides")
 
 local modem, stargate, dhd 
 local isRunning, HadNoError = true, true
-local gateType
+local gateType, dialCache
 
 local SettingsFile = "/gds/settings.cfg"
 local settings = {
@@ -310,15 +310,6 @@ local function sendIDC(code, timeout)
     return (pulls > timeout or msg==nil) and "No IDC response." or msg:sub(1, -4) 
 end
 
-do --like waking up with your front door open, doesn't work very well yet
-    if gateStatus == "open" and irisType~="NULL" and isOutgoingWormhole and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
-        print("Security threat detected. Closing iris.")
-        stargate.sendMessageToIncoming("Iris closed. Resend IDC.")
-        waitForIris("CLOSED", 0, false)
-    end
-end
-
-print("Starting gate dialer program. To disable printouts, enable headless mode in the settings file.")
 --send(sadd, 100, {gate.getGateType(), state, gate.dialedAddress, serial.serialize(gate.stargateAddress)})
 local function send(address, port, msg, utilityMsg)
     --os.sleep(math.min(math.random()/5, 0.2))
@@ -330,6 +321,47 @@ local function broadcast(port, msg)
     modem.broadcast(port, tostring(msg))
 end
 
+local function sendCmdResult(sender, port, msg, processID)
+    msg = msg or ""
+    local cmdPayload = processID and ("gdsCommandResult:{message='"..msg.."',processID='"..tostring(processID).."'}") or "gdsCommandResult: "..msg
+    send(sender, port, cmdPayload )
+    --print("sent "..cmdPayload)
+end
+
+local function handleIDC(idc, returnAddress, port, processID)
+    local sentCount, msg = 0, "Gate did not respond to IDC."
+    local validMessage = false
+    local noResponseCount = 0
+    repeat
+        if sentCount > 0 then 
+            if sentCount == 1 then 
+                print("Bad response, sending IDC again.")
+            end
+            os.sleep(1)
+        end
+        
+        msg = sendIDC(idc, 3)
+        validMessage = (msg ~= "Iris is busy!" and not msg:match("Code accepted"))
+        if msg == "No IDC response." and noResponseCount < 5 then
+            validMessage = false
+            noResponseCount = noResponseCount + 1
+        end
+        if msg == "Iris closed. Resend IDC." then --retry since the PC just turned on
+            sentCount = 0
+            validMessage = false
+            noResponseCount = 0
+            sendCmdResult(returnAddress, port, "Detected security measure. Resending IDC.", processID)
+        end
+        sentCount = sentCount + 1
+        if sentCount == 2 and not validMessage then
+            sendCmdResult(returnAddress, port, "Awaiting response...", processID)
+        end
+    until validMessage or sentCount == 10 -- or msg == ""
+    print("IDC Response: "..msg.." took "..sentCount.." tries.")
+    return msg
+end
+
+
 local function strsplit(inputstr, sep)
     if sep == nil then
         sep = "%s"
@@ -340,16 +372,34 @@ local function strsplit(inputstr, sep)
     end
     return t
 end
+
+local function retryIDC()
+    print("Retrying IDC protocol..")
+    local returnstr
+    if dialCache then
+        local idcType = type(dialCache[1])
+        returnstr = "Passage unsafe. Resending IDC" --perhaps a good time to raise the iris 
+        if idcType == "number" then
+            sendCmdResult(dialCache[2], dialCache[3], "Passage unsafe. Resending IDC.", dialCache[4])
+            if threads.handleIDC then threads.handleIDC:kill() end
+            threads.handleIDC = thread.create(function() 
+                local cmdRes = handleIDC(dialCache[1],dialCache[2],dialCache[3],dialCache[4])
+                sendCmdResult(dialCache[2], dialCache[3], cmdRes, dialCache[4])
+            end)
+        elseif idcType == "string" then
+            returnstr = "Requesting client resend custom IDC."
+            sendCmdResult(dialCache[2], dialCache[3], "Resend IDC.", dialCache[4])
+        end
+    else
+        returnstr = "Cannot resend IDC, missing dial cache."
+    end
+    return returnstr
+end
+
 --depreciated in favor of serialization.unserialize
 --local function legalString(msg)
 --    return not (msg:match("%(") or msg:match("%)") or msg:match("os%.") or msg:match("debug%.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io%.") or msg:match("io%[") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package%.") or msg:match("package%["))
 --end
-local function sendCmdResult(sender, port, msg, processID)
-    msg = msg or ""
-    local cmdPayload = processID and ("gdsCommandResult:{message='"..msg.."',processID='"..tostring(processID).."'}") or "gdsCommandResult: "..msg
-    send(sender, port, cmdPayload )
-    --print("sent "..cmdPayload)
-end
 
 local EventListeners = {
     --stargate_spin_chevron_engaged = event.listen("stargate_spin_chevron_engaged", function(_, _, caller, num, lock, glyph) end),
@@ -373,6 +423,7 @@ local EventListeners = {
     end),
 
     stargate_close = event.listen("stargate_close", function(_, _, caller, reason) 
+        dialCache = nil
         if stargate.getIrisState() == "CLOSED" then
             stargate.toggleIris()
         end
@@ -384,6 +435,14 @@ local EventListeners = {
 
     stargate_failed = event.listen("stargate_failed", function(_, _, caller, reason) 
     
+    end),
+
+    code_respond = event.listen("code_respond", function(_, from, idk, msg) 
+        msg = msg:sub(1,-4)
+        print('dafuq', msg)
+        if msg:match("Resend IDC.") then
+            retryIDC()
+        end
     end),
 
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, wakeup, msg, ...)
@@ -623,42 +682,16 @@ local EventListeners = {
                             local idcType = type(args.IDC)
                             print("idcType", idcType)
                             sendCmdResult(sender, port, "Successfully dialed."..(args.IDC~=-1 and idcType == "number" and "Sent IDC." or ""), msgdata.processID)
+                            dialCache = {args.IDC, sender, port, msgdata.processID, args.reciever}
                             if idcType == "number" then
+                                print(computer.uptime(),"dialcache", dialCache)
                                 waitUntilState("open")
                                 os.sleep(1)
-                                local sentCount, msg = 0, "Gate did not respond to IDC."
-                                local validMessage = false
-                                local noResponseCount = 0
-                                repeat
-                                    if sentCount > 0 then 
-                                        if sentCount == 1 then 
-                                            print("Bad response, sending IDC again.")
-                                        end
-                                        os.sleep(1)
-                                    end
-                                    
-                                    msg = sendIDC(args.IDC, 3)
-                                    validMessage = (msg ~= "Iris is busy!" and not msg:match("Code accepted"))
-                                    if msg == "No IDC response." and noResponseCount < 5 then
-                                        validMessage = false
-                                        noResponseCount = noResponseCount + 1
-                                    end
-                                    if msg == "Iris closed. Resend IDC." then --retry since the PC just turned on
-                                        sentCount = 0
-                                        validMessage = false
-                                        noResponseCount = 0
-                                        sendCmdResult(sender, port, "Detected security measure. Resending IDC.", msgdata.processID)
-                                    end
-                                    sentCount = sentCount + 1
-                                    if sentCount == 5 and not validMessage then
-                                        sendCmdResult(sender, port, "Awaiting response...", msgdata.processID)
-                                    end
-                                until validMessage or sentCount == 10 -- or msg == ""
-                                print("IDC Response: "..msg.." took "..sentCount.." tries.")
-                                waitTicks(5)
-                                sendCmdResult(sender, port, msg, msgdata.processID)
-                            elseif idcType == "string" then
-                                --OC stuff, probably do nothing
+                                if threads.handleIDC then threads.handleIDC:kill() end
+                                threads.handleIDC = thread.create(function() --replace with retryIDC()?
+                                    local cmdRes = handleIDC(args.IDC, sender, port, msgdata.processID)
+                                    sendCmdResult(sender, port, cmdRes, msgdata.processID)
+                                end)
                             end
                         else
                             waitTicks(5)
@@ -786,6 +819,10 @@ local EventListeners = {
                         writeSettingsFile()
                         sendCmdResult(sender, port, "kawooshAvoidance set to "..tostring(settings.kawooshAvoidance), msgdata.processID)
                     end
+                elseif command == "shutdown" then
+                    --add reboot option
+                elseif command == "resendIDC"  and dialCache and dialCache[5] and dialCache[5]==sender  then
+                    print(tostring(computer.uptime()).."| resendIDC result:", retryIDC())
                 end
             end
         end
@@ -855,6 +892,19 @@ local EventListeners = {
         end
     )
 }
+
+do --like waking up with your front door open, doesn't work very well yet
+    print("Starting gate dialer program. To disable printouts, enable headless mode in the settings file.")
+    if gateStatus == "open" and irisType~="NULL" and not isOutgoingWormhole and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
+        print("Security threat detected. Closing iris.")
+        local succ, err = stargate.sendMessageToIncoming("Iris closed. Resend IDC.")
+        if not succ then
+            print("stargate API failed, attempting OC fallback.")
+            modem.broadcast(settings.listeningPorts[1], "gdswakeup", "gds{command='resendIDC',user = {name = 'nobody'}}")
+        end
+        waitForIris("CLOSED", 0, false)
+    end
+end
 
 if settings.autoGitUpdate then
     local function autoPull(forceupdate) 
