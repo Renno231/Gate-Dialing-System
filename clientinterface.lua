@@ -21,6 +21,7 @@ local unicode = require("unicode")
 local serialization = require("serialization")
 local filesystem = require("filesystem")
 local textLib = require("text")
+local uuid = require("uuid")
 local modem = component.modem
 local gpu = component.gpu
 
@@ -29,6 +30,8 @@ local GlyphsMW = {"Andromeda","Aquarius","Aries","Auriga","Bootes","Cancer","Can
 local GlyphsPG = {"Aaxel","Abrin","Acjesis","Aldeni","Alura","Amiwill","Arami","Avoniv","Baselai","Bydo","Ca Po","Danami","Dawnre","Ecrumig","Elenami","Gilltin","Hacemill","Hamlinto","Illume","Laylox","Lenchan","Olavii","Once El","Poco Re","Ramnon","Recktic","Robandus","Roehi","Salma","Sandovi","Setas","Sibbron","Tahnan","Zamilloz","Zeo"}
 local DatabaseFile = "/gds/gateEntries.ff"
 local SettingsFile = "/gds/settings.cfg"
+local cmdResPrefix = "          ⤷ "
+local cmdResWSpace = "            " --⤹
 
 local screensizex, screensizey = gpu.getResolution() --80, 25 
 local forceRestart = false
@@ -307,45 +310,90 @@ readDatabaseFile()
 
 local outputWindow = windowapi.Window.new("Output", screensizex * 0.67 - 2, screensizey * 0.9, screensizex * 0.33 + 1, 0)
 outputWindow:display()
-local function displayOutputBuffer()
-    outputWindow:display()
-    outputWindow:clear()
-    local verticalheight = outputWindow.size.y
-    local iterations = math.min(verticalheight, #outputBuffer)
-    local count = 0
-    for i=1, iterations do
-        outputWindow:write(0, verticalheight-i, outputBuffer[i])
-    end
-end
+
 --could use unlimited size array,  but would need to unset any unneeded info (outputBuffer[index] = nil)
 --then iterate with while loop and line counting to account for blanks (bufferViewIndex = int, starting index of where draw from the buffer)
 --though for security, since process IDs will be integers corresponding to outputBuffer, make a pointer to the entry which is attached to the command inside of the process table
+local bufferViewLineIndex = 1
+local processLookup = {} --[processID] = processTable, table.insert(outputBuffer, 1, processTable)
+local function displayOutputBuffer()
+    local windowWidth = math.floor(outputWindow.size.x-2)
+    outputWindow:display()
+    outputWindow:clear()
+    local verticalheight = outputWindow.size.y
+    local maxLines = math.min(verticalheight, #outputBuffer)
+    local bufferIndex, currentLineIndex = 1, 1
+    local windowYValue = verticalheight-currentLineIndex
+    
+    local function processBuffer(bufferStr)
+        if bufferStr then --if bufferstr:match(cmdresponseprefix) then prefix with spaces?
+            if bufferStr:len() > windowWidth then
+                local isCmdRes = bufferStr:match(cmdResPrefix)
+                local currentStringHeight, totalStringHeight = 1, math.ceil(bufferStr:len() / windowWidth) --+ 1
+                local success, remainderString, wrappedResult = true, bufferStr, nil 
+                maxLines = math.min(verticalheight, maxLines + totalStringHeight - 1)
+                repeat 
+                    windowYValue = (verticalheight - totalStringHeight) + currentStringHeight - currentLineIndex
+                    wrappedResult, remainderString, success = textLib.wrap((isCmdRes and currentStringHeight > 1 and cmdResWSpace or "")..remainderString, windowWidth-2, windowWidth-2)
+                    if remainderString and remainderString:sub(1,1) ~= " " then
+                        remainderString = " "..remainderString
+                    end
+                    if wrappedResult then
+                        outputWindow:write(0, windowYValue, wrappedResult)
+                        currentStringHeight = currentStringHeight + 1
+                    end
+                until not success or (currentStringHeight + currentLineIndex - 1 > maxLines)
+                currentLineIndex = currentLineIndex + totalStringHeight
+            else
+                windowYValue = verticalheight - currentLineIndex-- + 1
+                outputWindow:write(0, windowYValue, bufferStr)
+                currentLineIndex = currentLineIndex + 1
+            end
+        end
+    end
+    while currentLineIndex <= maxLines do --max lines is a problem, 
+        local bufferVal = outputBuffer[bufferIndex]
+        local valType = type(bufferVal)
+        if valType == "table" then
+            local processListSize = #bufferVal.list
+            if processListSize > 0 then 
+                maxLines = math.min(verticalheight, maxLines + processListSize - 1) --very important -1!
+                for i= processListSize, 1, -1 do
+                    processBuffer(bufferVal.list[i])
+                end
+            end
+        else
+            processBuffer(bufferVal)
+        end 
+        bufferIndex = bufferIndex + 1
+    end
+end
+
 function recordToOutput(...)
     local args = {...}
     if #args>0 then
-        local windowWidth = math.floor(outputWindow.size.x-2)
         for index, arg in next, args do
+            local argtype = type(arg)
             if #outputBuffer == settings.outputBufferSize then
+                if argtype == "table" then
+                    processLookup[arg.processID] = nil
+                end
                 outputBuffer[settings.outputBufferSize] = nil
             end
-            if type(arg)~="string" then
-                arg = tostring(arg)
-            end
-            --arg = textLib.wrap(arg, windowWidth, windowWidth)
-            if arg:len() > windowWidth then
-                local wrapped, success
-                repeat 
-                    wrapped, arg, success = textLib.wrap(arg, windowWidth+3, windowWidth+3)
-                    table.insert(outputBuffer, 1, wrapped)
-                until not success
+            if argtype == "table" then
+                table.insert(outputBuffer, 1, arg)
+                processLookup[arg.processID] = arg
             else
+                if type(arg)~="string" then
+                    arg = tostring(arg)
+                end
                 table.insert(outputBuffer, 1, arg)
             end 
         end
         displayOutputBuffer()
     end
 end
-
+--recordToOutput{processID = 'hmm', list = {"1this is a list", "2trying to read from the list", "3beep boop"}}
 --output window code end
 local commandDescriptions = {
     clear = "empties output buffer";
@@ -365,6 +413,10 @@ local commandDescriptions = {
     sync = "not yet implimented. shares entries from one GDS client to another";
     edit = "modifies a given entry by name or position";
 }
+
+local function generateCmdPayload(command, args)
+    return {command = command, processID = uuid.next(),args = args or {}, user = {name = tostring(settings.lastUser)}}
+end
 --command processing 
 commands = {
     clear = function(...) 
@@ -375,6 +427,7 @@ commands = {
     set = function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
+        local cmdPayload --for the iris
         --for i,a in next, args do recordToOutput(i..":"..type(a).." = "..tostring(a)) end
         if args[2] == "range" or args[2] == "radius" then
             local newrange = math.min(math.max(tonumber(args[3]) or 16, 16), 400)
@@ -419,21 +472,23 @@ commands = {
             else
                 returnstr = "The third argument must be true/on or false/off."
             end
-        elseif args[2] == "entry" and args[3] and args[4] == "iris" then
+        elseif args[2] == "entry" and args[3] and args[4] == "iris" then --need to add way to use stargate as relay using offical mod API
             local foundEntry = findEntry(args[3])
             local irisValue = args[5] or "toggle"
+            
             if foundEntry then
                 returnstr = "Found entry "..foundEntry.Name..". "
                 local equivalentOption = optionEquivalence[irisValue]
                 if equivalentOption~=nil or irisValue == "toggle" then
                     returnstr = returnstr.. "Setting iris to "..irisValue..". "
-                    local cmdPayload = {command = "iris", args = {irisValue }, user = {name = tostring(settings.lastUser)}}
+                    cmdPayload = generateCmdPayload("iris")
                     if equivalentOption~=nil then
                         cmdPayload.args.irisValue = equivalentOption
                     elseif irisValue == "toggle" then
                        cmdPayload.args.irisValue = "toggle"
                     end
                     cmdPayload.args.IDC = type(tonumber(args[6]))=="number" and tonumber(args[6]) or (foundEntry.IDCs[args[6] or settings.lastUser] or -1)
+                    
                     returnstr = returnstr .. "IDC is "..tostring(cmdPayload.args.IDC)..". "
                     threads.gdsSend = thread.create(gdssend, foundEntry.UUID, settings.networkPort, cmdPayload) 
                 else
@@ -446,7 +501,7 @@ commands = {
             returnstr = "Invalid sub-command: "..tostring(args[2])
         end
         writeSettingsFile()
-        return returnstr
+        return returnstr, cmdPayload
     end;
     quit = function(...)
         local args = {...}
@@ -731,7 +786,7 @@ commands = {
     dial = function(...) --need to add the 4th argument as a timer to close the gate, -1 signifies as long as possible, otherwise its in seconds default = 30
         local args = {...}
         local returnstr = "Insufficient arguments."
-        local cmdPayload = {command = "dial", args = {speed = settings.dialSpeed, timer = tonumber(args[4])}, user = {name = tostring(settings.lastUser)}}
+        local cmdPayload = generateCmdPayload("dial", {speed = settings.dialSpeed, timer = tonumber(args[4])}) 
         local gateA, gateB
         if args[2] and args[3] then
             gateA = findEntry(args[2])
@@ -758,7 +813,7 @@ commands = {
         else
             returnstr = "Invalid argument: "..tostring(gateA == nil and args[2] or args[3])
         end
-        return returnstr
+        return returnstr, cmdPayload
     end;
     close =  function(...)
         local args = {...}
@@ -888,20 +943,27 @@ function processInput(usr, inputstr)
             recordToOutput(outputstring)
             if cmdfunction then
                 args[1] = nil --removing the command name
-                local succ, returndata = pcall(cmdfunction, table.unpack(args)) --could do returns here and deal with the output buffer, but not really necessary
-                if returndata then
-                    recordToOutput("          ⤷ "..returndata)
+                local succ, returndata, processTable = pcall(cmdfunction, table.unpack(args)) --could do returns here and deal with the output buffer, but not really necessary
+                if returndata then --if returndata == table then else do the default below
+                    if processTable then
+                        processTable.list = {}
+                        processTable.status = "open"
+                        table.insert(processTable.list, cmdResPrefix..returndata)
+                        recordToOutput(processTable)
+                    else
+                        recordToOutput(cmdResPrefix..returndata)
+                    end
                 end
             else
                 recordToOutput("          ⤷ invalid command.")
             end
         end
-   else
-        local chatstr = timeran.." "..(usr or "")..": "..inputstr
+    else
+        local chatstr = timeran.." "..(usr and usr..": " or "")..inputstr
         recordToOutput(chatstr)
-   end
+    end
 end
-processInput("GDS", "Do ;help or ;cmds to see commands.")
+processInput("GDS", "Do ;help or ;cmds or check the GDS github to see commands.")
 modem.open(settings.networkPort)
 -- end of command processing
 --depreciated for better method
@@ -916,10 +978,10 @@ local EventListeners = {
         if type(msg) == "string" then
             if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
                 local msgdata, payloadError = serialization.unserialize(msg:sub(8)) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
-                if msgdata==nil or payloadError or type(msgdata)~="table" then print("Invalid message payload") return end
+                if msgdata==nil or payloadError or type(msgdata)~="table" then return end --print("Invalid message payload") return end
                 local newGateType = msgdata.gateType
                 local newAddress = msgdata.Address
-                if msgdata.uuid == sender then
+                if msgdata.uuid == sender then --auto syncing
                     lastReceived[sender] = lastReceived[sender] or timeReceived-6
                     if timeReceived - lastReceived[sender] > 5 then
                         lastReceived[sender] = timeReceived
@@ -977,9 +1039,33 @@ local EventListeners = {
                 end
             elseif msg:sub(1, 17) == "gdsCommandResult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
                 local existingEntry, _ = findEntry(sender)
-                if existingEntry then
+                if existingEntry then --and targetGate
                     lastReceived["dialresult"..sender] = timeReceived
-                    recordToOutput("          ⤷ "..existingEntry.Name..": "..msg:sub(19)) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
+                    local msgpayload = msg:sub(18)
+                    if msgpayload:sub(1,1) == "{" then
+                        local msgdata, payloadError = serialization.unserialize(msgpayload) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
+                        if msgdata==nil or payloadError or type(msgdata)~="table" then return end 
+                        if msgdata.processID then
+                            local processTable = processLookup[msgdata.processID]
+                            if processTable then
+                                if processTable.status ~= "closed" then
+                                    table.insert(processTable.list, cmdResPrefix..existingEntry.Name..": "..msgdata.message) --need to determine status, not sure yet 
+                                    displayOutputBuffer()
+                                else
+                                end
+                            else
+
+                            end
+                        else --idk yet
+                        end
+                    else
+                        recordToOutput(cmdResPrefix..existingEntry.Name..": "..msgpayload) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
+                    end
+                    --[[
+                        if msg:sub(19) == "IDC code must be integer." then
+                            --get the process ID, see if it was a dial, see if the outgoing address is in the database and has an IDC, then run the command "set entry outgoingentry iris open idc"
+                        end
+                    ]]
                 end
             end
         end
@@ -1055,6 +1141,11 @@ local EventListeners = {
             HadNoError = status
             if not HadNoError then
                 term.clear()
+                --[[local errTable = strsplit(err, "\n")
+                for i,v in ipairs (errTable) do
+                    print(v)
+                    os.sleep(0.25)
+                end]]
                 print(err)
             end
         end
@@ -1095,9 +1186,8 @@ scanNearbyButton.func = function()
     --button:hide() event.timer(0.25, function() button:display() end)
 end
 gateOperator:selectTab("Database")
-scanNearby() --first scan to check where things are
+scanNearbyButton.func() --initial scan
 --main loop to keep it from returning to the terminal
-
 while isRunning and HadNoError do
     os.sleep(0.25)
     if settings.powerSaving then
@@ -1128,7 +1218,10 @@ end
 
 if HadNoError then
     term.clear()
+else
+    print("Error occurred.")
 end
+
 for i,v in pairs (package.loaded) do
     if i:sub(1,3)=="gui" then
         package.loaded[i] = nil

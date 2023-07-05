@@ -345,6 +345,12 @@ end
 --local function legalString(msg)
 --    return not (msg:match("%(") or msg:match("%)") or msg:match("os%.") or msg:match("debug%.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io%.") or msg:match("io%[") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package%.") or msg:match("package%["))
 --end
+local function sendCmdResult(sender, port, msg, processID)
+    msg = msg or ""
+    local cmdPayload = processID and ("gdsCommandResult:{message='"..msg.."',processID='"..tostring(processID).."'}") or "gdsCommandResult: "..msg
+    send(sender, port, cmdPayload )
+    --print("sent "..cmdPayload)
+end
 
 local EventListeners = {
     --stargate_spin_chevron_engaged = event.listen("stargate_spin_chevron_engaged", function(_, _, caller, num, lock, glyph) end),
@@ -426,7 +432,7 @@ local EventListeners = {
                         newAddressStr = "["..newAddressStr:sub(2, newAddressStr:len()-1).."]"
                         if not newAddress then
                             print("Invalid address")
-                            send(sender, port, "gdsCommandResult: Missing gate type for entry.")
+                            sendCmdResult(sender, port, "Missing gate type for entry.", msgdata.processID)
                             os.exit()
                         else
                             print("Found address")
@@ -446,7 +452,7 @@ local EventListeners = {
                         if type(addressCheck) == "table"  then --not enough power
                             if not addressCheck.canOpen then
                                 print("Not enough power to dial")
-                                send(sender, port, "gdsCommandResult: Insufficient power to dial. Requires "..addressCheck.open.." RF to open and "..addressCheck.keepAlive.." RF/t to maintain.")
+                                sendCmdResult(sender, port, "Insufficient power to dial. Requires "..addressCheck.open.." RF to open and "..addressCheck.keepAlive.." RF/t to maintain.", msgdata.processID)
                                 os.exit()
                             end
                             if totalGlyphs > 7 then
@@ -471,7 +477,7 @@ local EventListeners = {
                                 end
                             end
                         else
-                            send(sender, port, "gdsCommandResult: Address check failed.")
+                            sendCmdResult(sender, port, "Address check failed.", msgdata.processID)
                             print("Address check failed.")
                             os.exit()
                         end
@@ -613,7 +619,7 @@ local EventListeners = {
                             settings.lastWormhole = "outgoing"
                             writeSettingsFile()
                             broadcast(settings.listeningPorts[1], "gdswakeup")
-                            send(sender, port, "gdsCommandResult: Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""))
+                            sendCmdResult(sender, port, "Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""), msgdata.processID)
                             
                             if type(args.IDC)=="number" then
                                 waitUntilState("open")
@@ -639,20 +645,20 @@ local EventListeners = {
                                         sentCount = 0
                                         validMessage = false
                                         noResponseCount = 0
-                                        send(sender, port, "gdsCommandResult: Detected security measure. Resending IDC.")
+                                        sendCmdResult(sender, port, "Detected security measure. Resending IDC.", msgdata.processID)
                                     end
                                     sentCount = sentCount + 1
                                     if sentCount == 5 and not validMessage then
-                                        send(sender, port, "gdsCommandResult: Awaiting response...")
+                                        sendCmdResult(sender, port, "Awaiting response...", msgdata.processID)
                                     end
                                 until validMessage or sentCount == 10 -- or msg == ""
                                 print("IDC Response: "..msg.." took "..sentCount.." tries.")
                                 waitTicks(5)
-                                send(sender, port, "gdsCommandResult: "..msg)
+                                sendCmdResult(sender, port, msg, msgdata.processID)
                             end
                         else
                             waitTicks(5)
-                            send(sender, port, "gdsCommandResult: Dialing error: "..errormsg)
+                            sendCmdResult(sender, port, "Dialing error: "..errormsg, msgdata.processID)
                         end
                     end)
                 elseif command == "close" then
@@ -683,7 +689,7 @@ local EventListeners = {
                         
                         print(returnstr)
                         waitTicks(5)
-                        send(sender, port, "gdsCommandResult: " .. returnstr)
+                        sendCmdResult(sender, port, returnstr, msgdata.processID)
                     end
                 elseif command == "iris" then
                     lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-2
@@ -703,7 +709,7 @@ local EventListeners = {
                             irisStatus = stargate.getIrisState()
                             local succ, err
                             if validIDC and irisType=="NULL" then
-                                send(sender, port, "gdsCommandResult: Iris not detected.")
+                                sendCmdResult(sender, port, "Iris not detected.", msgdata.processID)
                             end
                             if irisType~="NULL" then
                                 threads.iris = thread.create(function()
@@ -717,11 +723,11 @@ local EventListeners = {
                                     end
                                     irisStatus = stargate.getIrisState()
                                     print("Iris state is",irisStatus)
-                                    send(sender, port, "gdsCommandResult: " .. (succ and ("Iris state set to "..irisStatus) or ("Iris error:"..(err and err or " unknown bug."))))
+                                    sendCmdResult(sender, port, (succ and ("Iris state set to "..irisStatus) or ("Iris error:"..(err and err or " unknown bug."))), msgdata.processID)
                                 end)
                             end
                         else
-                            send(sender, port, "gdsCommandResult: Invalid IDC.")
+                            sendCmdResult(sender, port, "Invalid IDC.", msgdata.processID)
                             --if stargate.getIrisState() == "OPENED" then --might need to wait to make sure no one is coming through if that's possible, or wait extra long if they have sent the wrong code before
                             --    stargate.toggleIris()
                             --end
@@ -750,7 +756,7 @@ local EventListeners = {
                                 local succ, err = gitUpdate("gatecomputer.lua","/gds/", args.force) --need to work in option for force
                                 print("Attempting to update..")
                                 local returnstr = "gdsCommandResult: " .. (succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
-                                send(sender, port, returnstr )
+                                sendCmdResult(sender, port, returnstr, msgdata.processID)
                                 print(succ and "Successfully updated gatecomputer." or ("Update failed: "..err))
                                 if succ then --and finds autostart, else report back that computer needs manual reboot for update to take effect
                                     os.sleep(5)
@@ -766,7 +772,7 @@ local EventListeners = {
                     if type(args.kawooshValue) == "boolean" then
                         settings.kawooshAvoidance = args.kawooshValue
                         writeSettingsFile()
-                        send(sender, port, "gdsCommandResult: kawooshAvoidance set to "..tostring(settings.kawooshAvoidance))
+                        sendCmdResult(sender, port, "kawooshAvoidance set to "..tostring(settings.kawooshAvoidance), msgdata.processID)
                     end
                 end
             end
