@@ -88,13 +88,6 @@ local lastBroadcasted = 0
 local function broadcast(port, msg)
     modem.broadcast(port, "gdswakeup", tostring(msg))
     lastBroadcasted = computer.uptime()
-    os.sleep(0.05)
-end
-
-local function scanNearby()
-    if computer.uptime()-lastBroadcasted > 1 then
-        broadcast(settings.networkPort, string.format('gds{command = "query", user = {name = %q}}', settings.lastUser or "unknown"))
-    end
 end
 
 local function readSettingsFile()
@@ -327,6 +320,7 @@ local function displayOutputBuffer()
     
     local function processBuffer(bufferStr)
         if bufferStr then --if bufferstr:match(cmdresponseprefix) then prefix with spaces?
+            if type(bufferStr)~="string" then bufferStr = tostring(bufferStr) end
             if bufferStr:len() > windowWidth then
                 local isCmdRes = bufferStr:match(cmdResPrefix)
                 local currentStringHeight, totalStringHeight = 1, math.ceil(bufferStr:len() / windowWidth) --+ 1
@@ -334,7 +328,7 @@ local function displayOutputBuffer()
                 maxLines = math.min(verticalheight, maxLines + totalStringHeight - 1)
                 repeat 
                     windowYValue = (verticalheight - totalStringHeight) + currentStringHeight - currentLineIndex
-                    wrappedResult, remainderString, success = textLib.wrap((isCmdRes and currentStringHeight > 1 and cmdResWSpace or "")..remainderString, windowWidth-2, windowWidth-2)
+                    wrappedResult, remainderString, success = textLib.wrap((isCmdRes and currentStringHeight > 1 and cmdResWSpace or "")..remainderString, windowWidth+2, windowWidth+2)
                     if remainderString and remainderString:sub(1,1) ~= " " then
                         remainderString = " "..remainderString
                     end
@@ -415,7 +409,7 @@ local commandDescriptions = {
 }
 
 local function generateCmdPayload(command, args)
-    return {command = command, processID = uuid.next(),args = args or {}, user = {name = tostring(settings.lastUser)}}
+    return {command = command, processID = uuid.next(), issued = computer.uptime(), args = args or {}, user = {name = tostring(settings.lastUser)}}
 end
 --command processing 
 commands = {
@@ -481,7 +475,7 @@ commands = {
                 local equivalentOption = optionEquivalence[irisValue]
                 if equivalentOption~=nil or irisValue == "toggle" then
                     returnstr = returnstr.. "Setting iris to "..irisValue..". "
-                    cmdPayload = generateCmdPayload("iris")
+                    cmdPayload = generateCmdPayload("iris") --iris payload
                     if equivalentOption~=nil then
                         cmdPayload.args.irisValue = equivalentOption
                     elseif irisValue == "toggle" then
@@ -807,6 +801,8 @@ commands = {
                 cmdPayload.args.Address = gateB.Address
                 cmdPayload.args.IDC = gateB.IDCs[args[5] or settings.lastUser] or -1
                 threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, cmdPayload) --maybe create an event timer for scanNearby 5-10 seconds after dialing which assumes they went through the gate
+                cmdPayload.args.gateA = gateA
+                cmdPayload.args.gateB = gateB
                 returnstr = "Dialing from "..gateA.Name.." to "..gateB.Name.."..."
                 lastEntry = gateA
             end
@@ -818,23 +814,32 @@ commands = {
     close =  function(...)
         local args = {...}
         local returnstr = "Insufficient arguments."
+        local cmdPayload
         local gateA = findEntry(args[2] or databaseList:getIndexFromName(nearbyGatesList.entries[nearbyGatesList.currententry])) or lastEntry -- or findEntry(nearbyGatesList.currententry) or findEntry(databaseList.currententry)
         if gateA then
-            threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, {command="close", user = {name = tostring(settings.lastUser)}})
+            cmdPayload = generateCmdPayload("close") 
+            threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, cmdPayload)
             returnstr = "Closing gate "..gateA.Name
             lastEntry = gateA
         else
             returnstr = "Unable to find entry."
         end
-        return returnstr
+        return returnstr, cmdPayload
     end;
     scan = function(...)
         local args = {...}
+        local cmdPayload
+        local returnstr = "Scanning for nearby gates..."
+        if computer.uptime()-lastBroadcasted > 1 then
+            cmdPayload = generateCmdPayload("query")
+            broadcast(settings.networkPort, "gds"..serialization.serialize(cmdPayload) )
+            lastBroadcasted = cmdPayload.issued
+        else
+            returnstr = "Spam interval reached, please try again."
+        end
         nearbyGatesList.entries = {}
         nearbyGatesList:display()
-        local returnstr = "Scanning for nearby gates..."
-        threads.scan = thread.create(scanNearby)
-        return returnstr
+        return returnstr, cmdPayload
     end;
     sync = function(...)
         local args = {...}
@@ -905,6 +910,7 @@ commands = {
         end
     end;
 }
+
 local function setAliases(func, ...)
     local args = {...}
     if type(commands[func])=="function" then
@@ -971,101 +977,135 @@ modem.open(settings.networkPort)
     return not (msg:match("%(") or msg:match("%)") or msg:match("os%.") or msg:match("debug%.") or msg:match("_G") or msg:match("load") or msg:match("dofile") or msg:match("io%.") or msg:match("io%[") or msg:match("loadfile") or msg:match("require") or msg:match("print") or msg:match("error") or msg:match("package%.") or msg:match("package%["))
 end]]
 --event listeners
+local cmdResultHandler = {
+    dial = function(from, processTable, msgdata, time) 
+        table.insert(processTable.list, cmdResPrefix..from.Name..": "..msgdata.message)
+        if type(processTable.args.IDC) == "string" and msgdata.message == "Successfully dialed." and processTable.args.gateB.UUID then                                        
+            processTable.list[#processTable.list] = processTable.list[#processTable.list].." Sending custom IDC."
+            local irisCmdPayload = generateCmdPayload("iris", {irisValue = "open", IDC = processTable.args.IDC, delay = 50, delayType = "ticks"}) --iris payload
+            irisCmdPayload.processID = processTable.processID
+            gdssend(processTable.args.gateB.UUID, settings.networkPort, irisCmdPayload) 
+        end
+    end,
+    close = function(from, processTable, msgdata, time)
+        if time-processTable.issued < 1 or #processTable.list < 3 then
+            table.insert(processTable.list, cmdResPrefix..from.Name..": "..msgdata.message)
+        else
+            processTable.status = "closed"
+        end
+    end,
+    iris = function(from, processTable, msgdata, time)
+        if time-processTable.issued < 1 or #processTable.list < 2 then
+            table.insert(processTable.list, cmdResPrefix..from.Name..": "..msgdata.message)
+        else
+            processTable.status = "closed"
+        end
+    end,
+}
+
 local restrictedKeyCodes = {[14] = true; [15] = true; [28]=true; [29]=true; [42] = true; [54] = true; [56] = true; [58] = true}
 local EventListeners = {
-    modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg)
+    modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg, utilityMsg)
         local timeReceived = computer.uptime()
-        if type(msg) == "string" then
-            if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then
-                local msgdata, payloadError = serialization.unserialize(msg:sub(8)) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
-                if msgdata==nil or payloadError or type(msgdata)~="table" then return end --print("Invalid message payload") return end
-                local newGateType = msgdata.gateType
-                local newAddress = msgdata.Address
-                if msgdata.uuid == sender then --auto syncing
-                    lastReceived[sender] = lastReceived[sender] or timeReceived-6
-                    if timeReceived - lastReceived[sender] > 5 then
-                        lastReceived[sender] = timeReceived
-                        --recordToOutput("Receiving address data from.."..sender:sub(1,4).." of type "..newGateType)
-                        local existingEntry, _ = findEntry(sender) or findEntry(newAddress, "MW") or findEntry(newAddress, "PG") or findEntry(newAddress, "UN")
-                        if existingEntry then
-                            local returnstr = existingEntry.Name
-                            if existingEntry.UUID ~= sender then
-                                existingEntry.UUID = sender
-                                returnstr = returnstr.." Updated UUID."
-                            end
-                            for glyphset, adrs in pairs (newAddress) do
-                                if glyphset == "MW" or glyphset == "PG" or glyphset == "UN" then
-                                    if existingEntry.Address[glyphset] then --need to add check to update address
-                                        if #adrs < 10 then
-                                            if #adrs > #existingEntry.Address[glyphset] then
-                                                existingEntry.Address[glyphset] = adrs
-                                                returnstr = returnstr.." Updated "..glyphset.." Address."
-                                            end
-                                        else
-                                            returnstr = returnstr .. " Failure to sync, too many glyphs in "..glyphset.." address: "..#adrs.."."
+        if type(msg) ~= "string" then return end
+        if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then --entry syncing
+            local msgdata, payloadError = serialization.unserialize(msg:sub(8))
+            --might need to require utilityMsg
+            if msgdata==nil or payloadError or type(msgdata)~="table" then return end --print("Invalid message payload") return end
+            local newGateType = msgdata.gateType
+            local newAddress = msgdata.Address
+            if msgdata.uuid == sender then --auto syncing
+                lastReceived[sender] = lastReceived[sender] or timeReceived-6
+                if timeReceived - lastReceived[sender] > 5 then
+                    lastReceived[sender] = timeReceived
+                    --recordToOutput("Receiving address data from.."..sender:sub(1,4).." of type "..newGateType)
+                    local returnstr = "hmm"
+                    local existingEntry, _ = findEntry(sender) or findEntry(newAddress, "MW") or findEntry(newAddress, "PG") or findEntry(newAddress, "UN")
+                    if existingEntry then
+                        returnstr = existingEntry.Name
+                        if existingEntry.UUID ~= sender then
+                            existingEntry.UUID = sender
+                            returnstr = returnstr.." Updated UUID."
+                        end
+                        for glyphset, adrs in pairs (newAddress) do
+                            if glyphset == "MW" or glyphset == "PG" or glyphset == "UN" then
+                                if existingEntry.Address[glyphset] then --need to add check to update address
+                                    if #adrs < 10 then
+                                        if #adrs > #existingEntry.Address[glyphset] then
+                                            existingEntry.Address[glyphset] = adrs
+                                            returnstr = returnstr.." Updated "..glyphset.." Address."
                                         end
                                     else
-                                        existingEntry.Address[glyphset] = adrs
-                                        returnstr = returnstr.." Added "..glyphset.." Address."
+                                        returnstr = returnstr .. " Failure to sync, too many glyphs in "..glyphset.." address: "..#adrs.."."
                                     end
                                 else
-                                    returnstr = returnstr.." Invalid glyph-set: "..glyphset.."."
-                                end
-                            end
-                            writeToDatabaseFile()
-                            processInput("  ⤷ Nearby gate", returnstr)
-                        else
-                            local newEntry = {
-                                Name = msgdata.Name or sender;
-                                Address = newAddress;
-                                IDCs = {};
-                                Type = newGateType;
-                                UUID = sender;
-                            }
-                            table.insert(database, newEntry)
-                            databaseList:addEntry(newEntry.Name)
-                            writeToDatabaseFile()
-                            existingEntry = newEntry
-                            recordToOutput("Added new entry "..newEntry.Name.." from scan.")
-                        end
-                        if nearbyGatesList:getIndexFromName(existingEntry.Name, false)==nil then 
-                            nearbyGatesList:addEntry(existingEntry.Name)
-                        end
-                        if gateOperator.currenttab == 1 then
-                            gateOperator:write(databaseList.pos.x-3, databaseList.pos.y-2, "|Database: "..#databaseList.entries)
-                            gateOperator:write(nearbyGatesList.pos.x-3, nearbyGatesList.pos.y-2, "|Nearby: "..#nearbyGatesList.entries)
-                        end
-                    end
-                end
-            elseif msg:sub(1, 17) == "gdsCommandResult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 2.5 then
-                local existingEntry, _ = findEntry(sender)
-                if existingEntry then --and targetGate
-                    lastReceived["dialresult"..sender] = timeReceived
-                    local msgpayload = msg:sub(18)
-                    if msgpayload:sub(1,1) == "{" then
-                        local msgdata, payloadError = serialization.unserialize(msgpayload) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
-                        if msgdata==nil or payloadError or type(msgdata)~="table" then return end 
-                        if msgdata.processID then
-                            local processTable = processLookup[msgdata.processID]
-                            if processTable then
-                                if processTable.status ~= "closed" then
-                                    table.insert(processTable.list, cmdResPrefix..existingEntry.Name..": "..msgdata.message) --need to determine status, not sure yet 
-                                    displayOutputBuffer()
-                                else
+                                    existingEntry.Address[glyphset] = adrs
+                                    returnstr = returnstr.." Added "..glyphset.." Address."
                                 end
                             else
-
+                                returnstr = returnstr.." Invalid glyph-set: "..glyphset.."."
                             end
-                        else --idk yet
                         end
+                        writeToDatabaseFile()
+                        
                     else
-                        recordToOutput(cmdResPrefix..existingEntry.Name..": "..msgpayload) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
+                        local newEntry = {
+                            Name = msgdata.Name or sender;
+                            Address = newAddress;
+                            IDCs = {};
+                            Type = newGateType;
+                            UUID = sender;
+                        }
+                        table.insert(database, newEntry)
+                        databaseList:addEntry(newEntry.Name)
+                        writeToDatabaseFile()
+                        existingEntry = newEntry
+                        returnstr = "Added new entry "..newEntry.Name.." from scan."
                     end
-                    --[[
-                        if msg:sub(19) == "IDC code must be integer." then
-                            --get the process ID, see if it was a dial, see if the outgoing address is in the database and has an IDC, then run the command "set entry outgoingentry iris open idc"
+                    if nearbyGatesList:getIndexFromName(existingEntry.Name, false)==nil then 
+                        nearbyGatesList:addEntry(existingEntry.Name)
+                    end
+                    if utilityMsg then
+                        local processTable = processLookup[utilityMsg]
+                        if processTable and processTable.status ~= "closed" then
+                            table.insert(processTable.list, cmdResPrefix.."Nearby gate "..returnstr) --need to determine status, not sure yet 
                         end
-                    ]]
+                    end
+                    displayOutputBuffer()
+                    if gateOperator.currenttab == 1 then
+                        gateOperator:write(databaseList.pos.x-3, databaseList.pos.y-2, "|Database: "..#databaseList.entries)
+                        gateOperator:write(nearbyGatesList.pos.x-3, nearbyGatesList.pos.y-2, "|Nearby: "..#nearbyGatesList.entries)
+                    end
+                end
+            end
+        elseif msg:sub(1, 17) == "gdsCommandResult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 0.01 then --need to make spam detection better
+            local existingEntry, _ = findEntry(sender)
+            if existingEntry then --and targetGate
+                lastReceived["dialresult"..sender] = timeReceived
+                local msgpayload = msg:sub(18)
+                if msgpayload:sub(1,1) == "{" then
+                    local msgdata, payloadError = serialization.unserialize(msgpayload) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
+                    if msgdata==nil or payloadError or type(msgdata)~="table" then return end 
+                    if msgdata.processID then
+                        local processTable = processLookup[msgdata.processID]
+                        if processTable then
+                            if processTable.status ~= "closed" then
+                                local resultHandleCallback = cmdResultHandler[processTable.command]
+                                if resultHandleCallback then
+                                    resultHandleCallback(existingEntry, processTable, msgdata, timeReceived)
+                                else
+                                    table.insert(processTable.list, cmdResPrefix..existingEntry.Name..": "..msgdata.message) --need to determine status, not sure yet 
+                                end
+                                displayOutputBuffer()
+                            else
+                            end
+                        else
+
+                        end
+                    else --idk yet
+                    end
+                else
+                    recordToOutput(cmdResPrefix..existingEntry.Name..": "..msgpayload) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
                 end
             end
         end
