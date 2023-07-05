@@ -41,8 +41,7 @@ local commandLog = {} --table.insert(commandLog, sender.." "..self.command)
 local threads = {} --threads.example = thread.create(function() end); threads.example:kill(); threads.example:suspend()
 local lastReceived = {} -- for wireless messages
 local gateStatus, irisStatus = "idle", nil
-local lastSuccessfulDial = nil
-local jsgVersion, irisType
+local isOutgoingWormhole, jsgVersion, irisType
 term.clear()
 
 if component.isAvailable("modem") then
@@ -71,7 +70,7 @@ if component.isAvailable("stargate") then
     irisStatus = stargate.getIrisState()
     gateType = stargate.getGateType():sub(1,1)
     gateType = (gateType == "M" and "MW") or (gateType == "P" and "PG") or (gateType == "U" and "UN")
-    gateStatus = stargate.getGateStatus()
+    gateStatus, isOutgoingWormhole = stargate.getGateStatus()
     gatedataTable = "gdsgate"..serialization.serialize({
         gateType = gateType;
         Address = {
@@ -259,7 +258,7 @@ local function waitUntilState(state, step)
     step = step or 0
     repeat 
         os.sleep(step)
-        gateStatus = stargate.getGateStatus()
+        gateStatus, isOutgoingWormhole = stargate.getGateStatus()
     until gateStatus == state
 end
 
@@ -312,7 +311,7 @@ local function sendIDC(code, timeout)
 end
 
 do --like waking up with your front door open, doesn't work very well yet
-    if gateStatus == "open" and irisType~="NULL" and settings.lastWormhole == "incoming" and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
+    if gateStatus == "open" and irisType~="NULL" and isOutgoingWormhole and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
         print("Security threat detected. Closing iris.")
         stargate.sendMessageToIncoming("Iris closed. Resend IDC.")
         waitForIris("CLOSED", 0, false)
@@ -321,9 +320,9 @@ end
 
 print("Starting gate dialer program. To disable printouts, enable headless mode in the settings file.")
 --send(sadd, 100, {gate.getGateType(), state, gate.dialedAddress, serial.serialize(gate.stargateAddress)})
-local function send(address, port, msg)
-    os.sleep(math.min(math.random()/5, 0.2))
-    modem.send(address, port, tostring(msg))
+local function send(address, port, msg, utilityMsg)
+    --os.sleep(math.min(math.random()/5, 0.2))
+    modem.send(address, port, tostring(msg), utilityMsg)
 end
 
 local function broadcast(port, msg)
@@ -358,8 +357,7 @@ local EventListeners = {
     --stargate_dhd_chevron_engaged = event.listen("stargate_dhd_chevron_engaged", function(_, _, caller, num, lock, glyph) end),
 
     stargate_incoming_wormhole = event.listen("stargate_incoming_wormhole", function(_, _, caller, dialedAddressSize) 
-        settings.lastWormhole = "incoming"
-        writeSettingsFile()
+        isOutgoingWormhole = false
         if stargate.getIrisState() == "OPENED" then
             stargate.toggleIris()
             print("Incoming wormhole.")
@@ -445,7 +443,7 @@ local EventListeners = {
                         end 
                         print("Checking if address exists...")
                         local addressCheck = stargate.getEnergyRequiredToDial(table.unpack(newAddress))
-                        gateStatus = stargate.getGateStatus()
+                        gateStatus, isOutgoingWormhole = stargate.getGateStatus()
                         local glyphStart, hasEngagedGate = 1, false
                         local currentDialedAddress = stargate.dialedAddress
                         local totalGlyphs = #newAddress
@@ -481,8 +479,9 @@ local EventListeners = {
                             print("Address check failed.")
                             os.exit()
                         end
-                        if gateStatus == "open" and settings.lastWormhole == "incoming" then
+                        if gateStatus == "open" and not isOutgoingWormhole then
                             print("Gate is open, must wait until incoming wormhole closes.")
+                            sendCmdResult(sender, port, "Gate busy, waiting until inactive.", msgdata.processID)
                             waitUntilState("idle")
                         end
                         if currentDialedAddress and currentDialedAddress~="[]" and gateStatus~="open" then 
@@ -509,9 +508,11 @@ local EventListeners = {
                             if glyphStart > #newAddress then
                                 local hasClosed, err
                                 if settings.kawooshAvoidance and stargate.getIrisType ~="NULL" then
+                                    sendCmdResult(sender, port, "Kawoosh avoidance active.", msgdata.processID)
                                     hasClosed, err = waitForIris("CLOSED")
                                     if err then
                                         print("Iris malfunction, cannot avoid kawoosh:", err)
+                                        sendCmdResult(sender, port, "Iris malfunction, cannot avoid kawoosh.", msgdata.processID)
                                     end
                                 end
                                 hasEngagedGate = stargate.engageGate()
@@ -540,7 +541,7 @@ local EventListeners = {
                                 waitUntilState()
                             end
                         end
-                        gateStatus = stargate.getGateStatus()
+                        gateStatus, isOutgoingWormhole = stargate.getGateStatus()
                         local speedDial = (args.speed and args.speed < 25 or false) and canSpeedDial
                         local delayTime = (args.speed or 0) / (totalGlyphs + 1)
                         local engageResult, errormsg, dialStart = false, "", computer.uptime()
@@ -555,9 +556,11 @@ local EventListeners = {
                                 print("> Glyph "..i)
                                 local hasClosed, err
                                 if settings.kawooshAvoidance and (i == irisToggleGlyph or (args.speed < irisCloseTime and not mustwaitUntilState) ) and irisType~="NULL" then
-                                    hasClosed, err = waitForIris("CLOSED", 0, (args.speed < irisCloseTime and not mustwaitUntilState) )
+                                    sendCmdResult(sender, port, "Kawoosh avoidance active.", msgdata.processID)
+                                    hasClosed, err = waitForIris("CLOSED")
                                     if err then
                                         print("Iris malfunction, cannot avoid kawoosh:", err)
+                                        sendCmdResult(sender, port, "Iris malfunction, cannot avoid kawoosh.", msgdata.processID)
                                     end
                                 end
                                 if speedDial then
@@ -593,7 +596,7 @@ local EventListeners = {
                                         repeat 
                                             currentDialedAddress = stargate.dialedAddress
                                             os.sleep()
-                                            gateStatus = stargate.getGateStatus()
+                                            gateStatus, isOutgoingWormhole = stargate.getGateStatus()
                                         until string.gsub(currentDialedAddress:sub(currentDialedAddress:len()-lastGlyph:len()), "]", "") == lastGlyph and gateStatus == "idle"
                                         engageResult = stargate.engageGate()
                                         if engageResult == "stargate_engage" then
@@ -616,12 +619,11 @@ local EventListeners = {
                         end
                         if engageResult == "stargate_engage" or engageResult == "dhd_engage" or hasEngagedGate then
                             print("Commencing IDC procedure.")
-                            settings.lastWormhole = "outgoing"
-                            writeSettingsFile()
                             broadcast(settings.listeningPorts[1], "gdswakeup")
-                            sendCmdResult(sender, port, "Successfully dialed. "..(args.IDC~=-1 and "Sent IDC." or ""), msgdata.processID)
-                            
-                            if type(args.IDC)=="number" then
+                            local idcType = type(args.IDC)
+                            print("idcType", idcType)
+                            sendCmdResult(sender, port, "Successfully dialed."..(args.IDC~=-1 and idcType == "number" and "Sent IDC." or ""), msgdata.processID)
+                            if idcType == "number" then
                                 waitUntilState("open")
                                 os.sleep(1)
                                 local sentCount, msg = 0, "Gate did not respond to IDC."
@@ -655,6 +657,8 @@ local EventListeners = {
                                 print("IDC Response: "..msg.." took "..sentCount.." tries.")
                                 waitTicks(5)
                                 sendCmdResult(sender, port, msg, msgdata.processID)
+                            elseif idcType == "string" then
+                                --OC stuff, probably do nothing
                             end
                         else
                             waitTicks(5)
@@ -684,11 +688,11 @@ local EventListeners = {
                         elseif stargate.dialedAddress~="[]" then
                             stargate.abortDialing()
                             returnstr="Aborting dialing..."
-                            
+                        else
+                            returnstr="Gate is already inactive."
                         end
                         
                         print(returnstr)
-                        waitTicks(5)
                         sendCmdResult(sender, port, returnstr, msgdata.processID)
                     end
                 elseif command == "iris" then
@@ -713,6 +717,13 @@ local EventListeners = {
                             end
                             if irisType~="NULL" then
                                 threads.iris = thread.create(function()
+                                    if type(args.delay) == "number" then
+                                        if args.delayType == "ticks" then
+                                            waitTicks(args.delay) 
+                                        else
+                                            os.sleep(args.delay)
+                                        end
+                                    end
                                     if args.irisValue == "toggle" then --need to rewrite and simplify this (probably migrate this logic to clientinterface)
                                         local newstate = irisStatus:match("OPEN") and "CLOSED" or "OPENED"
                                         succ, err = waitForIris(newstate)
@@ -737,7 +748,8 @@ local EventListeners = {
                     lastReceived[userprocessKey] = lastReceived[userprocessKey] or currentTime-6
                     if currentTime - lastReceived[userprocessKey] > 5 then
                         lastReceived[userprocessKey] = currentTime
-                        threads.query = thread.create(send, sender, port, gatedataTable)
+                        print("Synced data to client.")
+                        threads.query = thread.create(send, sender, port, gatedataTable, msgdata.processID)
                     end
                 elseif command == "update" then
                     lastReceived[command] = lastReceived[command] or currentTime-35
