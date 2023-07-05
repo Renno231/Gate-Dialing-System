@@ -244,8 +244,8 @@ local optionEquivalence = {
     ["open"] = true,
     ["closed"] = false,
     ["close"] = false,
-    ["on"] = true,
-    ["off"] = false,
+    ["on"] = false,
+    ["off"] = true,
     ["true"] = true ,
     ["false"] = false,
 }
@@ -800,9 +800,11 @@ commands = {
             else
                 cmdPayload.args.Address = gateB.Address
                 cmdPayload.args.IDC = gateB.IDCs[args[5] or settings.lastUser] or -1
+                cmdPayload.args.reciever = gateB.UUID
                 threads.gdsSend = thread.create(gdssend, gateA.UUID, settings.networkPort, cmdPayload) --maybe create an event timer for scanNearby 5-10 seconds after dialing which assumes they went through the gate
                 cmdPayload.args.gateA = gateA
                 cmdPayload.args.gateB = gateB
+                cmdPayload.args.reciever = nil
                 returnstr = "Dialing from "..gateA.Name.." to "..gateB.Name.."..."
                 lastEntry = gateA
             end
@@ -979,10 +981,16 @@ end]]
 --event listeners
 local cmdResultHandler = {
     dial = function(from, processTable, msgdata, time) 
-        table.insert(processTable.list, cmdResPrefix..from.Name..": "..msgdata.message)
-        if type(processTable.args.IDC) == "string" and msgdata.message == "Successfully dialed." and processTable.args.gateB.UUID then                                        
-            processTable.list[#processTable.list] = processTable.list[#processTable.list].." Sending custom IDC."
+        local lastProcessMsg, newProcessMsg = processTable.list[#processTable.list], cmdResPrefix..from.Name..": "..msgdata.message
+        if lastProcessMsg == newProcessMsg then return end --no duplicates
+        table.insert(processTable.list, newProcessMsg)
+        if type(processTable.args.IDC) == "string" and (msgdata.message == "Successfully dialed." or msgdata.message == "Resend IDC.") and processTable.args.gateB.UUID then
             local irisCmdPayload = generateCmdPayload("iris", {irisValue = "open", IDC = processTable.args.IDC, delay = 50, delayType = "ticks"}) --iris payload
+            if msgdata.message == "Successfully dialed." then
+                processTable.list[#processTable.list] = newProcessMsg.." Sending custom IDC."
+            elseif msgdata.message == "Resend IDC." then
+                irisCmdPayload.args.delay = nil
+            end
             irisCmdPayload.processID = processTable.processID
             gdssend(processTable.args.gateB.UUID, settings.networkPort, irisCmdPayload) 
         end
