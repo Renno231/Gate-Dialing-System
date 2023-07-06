@@ -246,8 +246,8 @@ local optionEquivalence = {
     ["close"] = false,
     ["on"] = false,
     ["off"] = true,
-    ["true"] = true ,
-    ["false"] = false,
+    ["true"] = false,
+    ["false"] = true,
 }
 
 --main code
@@ -310,7 +310,7 @@ outputWindow:display()
 local bufferViewLineIndex = 1
 local processLookup = {} --[processID] = processTable, table.insert(outputBuffer, 1, processTable)
 local function displayOutputBuffer()
-    local windowWidth = math.floor(outputWindow.size.x-2)
+    local windowWidth = math.floor(outputWindow.size.x)---2)
     outputWindow:display()
     outputWindow:clear()
     local verticalheight = outputWindow.size.y
@@ -328,7 +328,7 @@ local function displayOutputBuffer()
                 maxLines = math.min(verticalheight, maxLines + totalStringHeight - 1)
                 repeat 
                     windowYValue = (verticalheight - totalStringHeight) + currentStringHeight - currentLineIndex
-                    wrappedResult, remainderString, success = textLib.wrap((isCmdRes and currentStringHeight > 1 and cmdResWSpace or "")..remainderString, windowWidth+2, windowWidth+2)
+                    wrappedResult, remainderString, success = textLib.wrap((isCmdRes and currentStringHeight > 1 and cmdResWSpace or "")..remainderString, windowWidth, windowWidth)
                     if remainderString and remainderString:sub(1,1) ~= " " then
                         remainderString = " "..remainderString
                     end
