@@ -613,6 +613,7 @@ local EventListeners = {
                             irisType = tostring(stargate.getIrisType())
                             local irisCloseTime = ((irisType:match("IRIS_") and 3) or (irisType == "SHIELD" and 1) or 1)
                             local irisToggleGlyph = math.max(glyphStart, totalGlyphs -  math.ceil(irisCloseTime / math.max(mustwaitUntilState and 0.85 or 0.085, delayTime)))
+                            print("mustwaitUntilState:",mustwaitUntilState)
                             for i = glyphStart, totalGlyphs do
                                 print("> Glyph "..i)
                                 local hasClosed, err
@@ -682,11 +683,9 @@ local EventListeners = {
                             print("Commencing IDC procedure.")
                             broadcast(settings.listeningPorts[1], "gdswakeup")
                             local idcType = type(args.IDC)
-                            print("idcType", idcType)
                             sendCmdResult(sender, port, "Successfully dialed."..(args.IDC~=-1 and idcType == "number" and "Sent IDC." or ""), msgdata.processID)
                             dialCache = {args.IDC, sender, port, msgdata.processID, args.reciever}
                             if idcType == "number" then
-                                print(computer.uptime(),"dialcache", dialCache)
                                 waitUntilState("open")
                                 os.sleep(1)
                                 if threads.handleIDC then threads.handleIDC:kill() end
