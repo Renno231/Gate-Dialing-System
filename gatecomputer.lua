@@ -141,6 +141,17 @@ local function checkTPS(waitDelay)
     return math.min(math.floor((20 * waitDelay * 1000) / (checkTime() - realTimeOld)), 20)
 end
 
+local function strsplit(inputstr, sep)
+    if sep == nil then
+        sep = "%s"
+    end
+    local t={}
+    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+        table.insert(t, str)
+    end
+    return t
+end
+
 local function waitTicks(ticks)
     ticks = ticks or 20
     os.sleep(ticks/checkTPS(0.1) - 0.1)
@@ -361,18 +372,6 @@ local function handleIDC(idc, returnAddress, port, processID)
     return msg
 end
 
-
-local function strsplit(inputstr, sep)
-    if sep == nil then
-        sep = "%s"
-    end
-    local t={}
-    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
-        table.insert(t, str)
-    end
-    return t
-end
-
 local function retryIDC()
     print("Retrying IDC protocol..")
     local returnstr
@@ -439,7 +438,6 @@ local EventListeners = {
 
     code_respond = event.listen("code_respond", function(_, from, idk, msg) 
         msg = msg:sub(1,-4)
-        print('dafuq', msg)
         if msg:match("Resend IDC.") then
             retryIDC()
         end
@@ -511,6 +509,10 @@ local EventListeners = {
                                 print("Not enough power to dial")
                                 sendCmdResult(sender, port, "Insufficient power to dial. Requires "..addressCheck.open.." RF to open and "..addressCheck.keepAlive.." RF/t to maintain.", msgdata.processID)
                                 os.exit()
+                            else
+                                local duration = (stargate.getEnergyStored()-addressCheck.open)/addressCheck.keepAlive
+                                local minutes, seconds = os.date("%M",duration), os.date("%S",duration)
+                                sendCmdResult(sender, port, "Valid address. Cost "..addressCheck.open.." RF. Upkeep "..addressCheck.keepAlive.." RF/t. Duration "..os.date("%X",duration), msgdata.processID )--..minutes.."m"..seconds.."s.", msgdata.processID)
                             end
                             if totalGlyphs > 7 then
                                 for check = 1, totalGlyphs-7 do
@@ -610,13 +612,13 @@ local EventListeners = {
                             print("canSpeedDial = "..tostring(canSpeedDial)..". args.speed = "..tostring(args.speed).." | mustwaitUntilState = "..tostring(mustwaitUntilState))
                             irisType = tostring(stargate.getIrisType())
                             local irisCloseTime = ((irisType:match("IRIS_") and 3) or (irisType == "SHIELD" and 1) or 1)
-                            local irisToggleGlyph = math.max(glyphStart, totalGlyphs -  math.ceil(irisCloseTime / (delayTime > 0 and delayTime or 1)))
+                            local irisToggleGlyph = math.max(glyphStart, totalGlyphs -  math.ceil(irisCloseTime / math.max(mustwaitUntilState and 0.85 or 0.085, delayTime)))
                             for i = glyphStart, totalGlyphs do
                                 print("> Glyph "..i)
                                 local hasClosed, err
                                 if settings.kawooshAvoidance and (i == irisToggleGlyph or (args.speed < irisCloseTime and not mustwaitUntilState) ) and irisType~="NULL" then
                                     sendCmdResult(sender, port, "Kawoosh avoidance active.", msgdata.processID)
-                                    hasClosed, err = waitForIris("CLOSED")
+                                    hasClosed, err = waitForIris("CLOSED", 0, i ~= irisToggleGlyph or i==glyphStart)
                                     if err then
                                         print("Iris malfunction, cannot avoid kawoosh:", err)
                                         sendCmdResult(sender, port, "Iris malfunction, cannot avoid kawoosh.", msgdata.processID)
@@ -665,7 +667,7 @@ local EventListeners = {
                                 end
                             end
                         end
-                        --print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
+                        print("Finished dialing protocol. Time elapsed: "..(computer.uptime() - dialStart))
                         irisStatus = stargate.getIrisState()
                         if settings.kawooshAvoidance and irisType~="NULL" and irisStatus == "CLOSED" then
                             thread.create(function() 
@@ -917,7 +919,7 @@ if settings.autoGitUpdate then
         end 
     end
     autoPull()
-    EventListeners.gitAutoUpdate = event.timer(60 * 60, autoPull, math.huge)
+    EventListeners.gitAutoUpdate = event.timer(2 * 60 * 60, autoPull, math.huge)
 end
 
 if not settings.runInBackground then
