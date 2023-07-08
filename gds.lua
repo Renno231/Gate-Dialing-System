@@ -8,7 +8,7 @@ local gdsType = (filesystem.exists("/gds/clientinterface.lua") and "-c") or (fil
 local optionsString = "-"
 for k,v in pairs(opts) do optionsString = optionsString..tostring(k) end
 
-if args[1] == "udpate" then --update
+if args[1] == "update" then --update
     if not component.isAvailable("internet") then
         print("Internet card is required to update.") --plans to change this in the future
         os.exit(false)
