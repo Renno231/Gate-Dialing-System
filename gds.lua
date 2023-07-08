@@ -137,10 +137,18 @@ if gdsType and args[1] == "floppy" then
 local filesystem, computer, transfer, devfs = require("filesystem"), require("computer"), require("tools/transfer"), require("devfs")
 if computer.freeMemory() < 50000 then print("Low memory, collecting garbage") os.sleep(1) end
 require("term").clear()
+if filesystem.list(options.to)() ~= nil then
+    io.write("Installation destination "..options.to.." is not empty, do you wish to continue? [Y/n]\n")
+    if not ((io.read() or "n") .. "y"):match("^%s*[Yy]") then
+        io.write("Installation cancelled\n")
+        os.exit()
+    end
+end
+--check if options.to is empty with filesystem.list(), if not, prompt user input with a beep
 print("Running custom GDS installer.")
 local copied = transfer.batch({options.from, options.to}, {cmd="cp",r=true,u=true,P=true,v=true,skip={"/mnt","/dev","/.install","/autorun.lua","/.prop","/usr/man","/usr/misc"}})
 if copied ~= 0 then computer.beep(125, 2) else computer.beep() end
-print("Installation complete!")
+print("Primary files copied.")
 local proxy, reason = devfs.getDevice(options.to)
 local succ, err = pcall(devfs.setDeviceLabel, proxy, "GateComputer")
 if not succ then print("Failed to label drive: "..err) else print("Labeled gate computer drive.") end
@@ -171,8 +179,16 @@ local function replaceLine(path, lines)
     return true
 end
 local repaired = replaceLine(options.to.."/lib/core/install_basics.lua", {[212]=[[io.write("Install " .. source_display .. special_target .. "? [Y/n] ")]],[213] = [[if not ((io.read() or "n") .. "y"):match("^%s*[Yy]") then]],[214] = [[io.write("Installation cancelled\n")]],[215] = "os.exit()",[216] = "end"})        
-print((repaired==true and "Repaired" or "Failed to repair").."/lib/core/install_basics.lua")
-os.sleep(5)
+print((repaired==true and "Repaired" or "Failed to repair").." /lib/core/install_basics.lua")
+print("Installation completed.\nRemove GDS installation floppy to continue.")
+for i=1,2 do computer.beep() end
+local _n, floppyRemoved = false
+local floppyUUID = filesystem.get(options.from).address
+repeat 
+    _n, floppyRemoved = require("event").pull(math.huge, "component_removed")
+    floppyRemoved = floppyRemoved == floppyUUID
+until floppyRemoved
+computer.beep()
 computer.shutdown(true)]==]
         local installerFile = writeFile(floppyPath.."/.install", customInstaller)
         print(".install:", installerFile) 
