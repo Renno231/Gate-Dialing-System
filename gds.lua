@@ -144,7 +144,8 @@ print("Installation complete!")
 local proxy, reason = devfs.getDevice(options.to)
 local succ, err = pcall(devfs.setDeviceLabel, proxy, "GateComputer")
 if not succ then print("Failed to label drive: "..err) else print("Labeled gate computer drive.") end
-if computer.setBootAddress(options.to) then print("Boot address set to " .. options.to) else print("Failed to set boot address.") end
+computer.setBootAddress(options.to)
+if computer.getBootAddress() == options.to then print("Boot address set to " .. options.to) else print("Failed to set boot address.") end
 filesystem.makeDirectory("/home")
 if filesystem.exists(options.to.."/etc/rc.cfg") then
     local file = io.open(options.to.."/etc/rc.cfg", "w") file:write('enabled = {"gds"}') file:close()
