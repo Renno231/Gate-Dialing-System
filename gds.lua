@@ -147,8 +147,7 @@ end
 --check if options.to is empty with filesystem.list(), if not, prompt user input with a beep
 print("Running custom GDS installer.")
 local copied = transfer.batch({options.from, options.to}, {cmd="cp",r=true,u=true,P=true,v=true,skip={"/mnt","/dev","/.install","/autorun.lua","/.prop","/usr/man","/usr/misc"}})
-if copied ~= 0 then computer.beep(125, 2) else computer.beep() end
-print("Primary files copied.")
+if copied ~= 0 then computer.beep(125, 2) print("File installation failed.") os.exit() else computer.beep() print("Primary files copied.") end
 local proxy, reason = devfs.getDevice(options.to)
 local succ, err = pcall(devfs.setDeviceLabel, proxy, "GateComputer")
 if not succ then print("Failed to label drive: "..err) else print("Labeled gate computer drive.") end
