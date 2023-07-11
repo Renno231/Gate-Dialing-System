@@ -81,7 +81,7 @@ if component.isAvailable("modem") then
         print("Opened port "..port)
     end
     modem.setStrength(400)
-    modem.setWakeMessage("gdswakeup")
+    modem.setWakeMessage("gdswakeup", true) --annoying that you must specify true
 else
     print("Wireless modem not connected.")
     os.exit()
