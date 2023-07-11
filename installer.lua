@@ -12,12 +12,10 @@ local hasInternet = component.isAvailable("internet")
 local BranchURL = "https://raw.githubusercontent.com/Renno231/Gate-Dialing-System/main/"
 local gdsFiles = {"/bin/gds.lua", "/gds/gatecomputer.lua","/lib/clientinterface.lua","/lib/guilist.lua","/lib/guiwindow.lua","/lib/guibutton.lua","/lib/guitextbox.lua"}
 
+local args, opts = shell.parse(...)
 if hasInternet then 
     internet = require("internet") 
-end
-
-local args, opts = shell.parse(...)
-if not hasInternet then
+else
     print("Installation requires an internet card. Insert an internet card to install.\n")
     os.exit(false)
 end
