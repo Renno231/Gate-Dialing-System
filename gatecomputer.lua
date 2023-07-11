@@ -718,7 +718,8 @@ EventListeners.modem_message = event.listen("modem_message", function(_, receive
                     end
                     local validIDC = args.IDC and settings.IDCs[args.IDC]
                     if totalIDCs == 0 or validIDC then
-                            
+                        settings.lastReceivedIDC = args.IDC
+                        writeSettingsFile()
                         print("Iris access authorized.")
                         irisStatus = stargate.getIrisState()
                         local succ, err
@@ -879,7 +880,11 @@ EventListeners.interruptedEvent = event.listen(
 
 do --like waking up with your front door open, doesn't work very well yet
     print("Starting gate dialer program. To disable printouts, enable headless mode in the settings file.")
-    if gateStatus == "open" and irisType~="NULL" and not isOutgoingWormhole and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
+    local totalIDCs = 0
+    for i,v in pairs (settings.IDCs) do
+        totalIDCs = totalIDCs + 1
+    end
+    if gateStatus == "open" and irisType~="NULL" and not isOutgoingWormhole and totalIDCs > 0 and (settings.lastReceivedIDC and not settings.IDCs[settings.lastReceivedIDC] or settings.lastReceivedIDC == nil) then
         print("Security threat detected. Closing iris.")
         local succ, err = stargate.sendMessageToIncoming("Iris closed. Resend IDC.")
         if not succ then
