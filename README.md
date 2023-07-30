@@ -6,3 +6,5 @@ Here's a short [demonstration](https://www.youtube.com/watch?v=ROAVJqH6SNM) of G
 For an intro tutorial on how to set up GDS, refer to this [video](https://youtu.be/_TPjf1JJi7U).
 
 Special thanks to Ragog for helping me refine the ideas and mechanics behind GDS.
+
+The project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
