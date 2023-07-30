@@ -1016,6 +1016,9 @@ local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg, utilityMsg)
         local timeReceived = computer.uptime()
         if type(msg) ~= "string" then return end
+        if msg:match("function.*[(]") or msg:match("[.:].*[('\")]") then --function and code detection
+            return
+        end
         if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then --entry syncing
             local msgdata, payloadError = serialization.unserialize(msg:sub(8))
             --might need to require utilityMsg
