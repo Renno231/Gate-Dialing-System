@@ -113,11 +113,8 @@ end
 readSettingsFile()
 
 local function strsplit(inputstr, sep)
-    if sep == nil then
-        sep = "%s"
-    end
     local t={}
-    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+    for str in string.gmatch(inputstr, "([^"..(sep or "%s").."]+)") do
         table.insert(t, str)
     end
     return t
@@ -1016,8 +1013,12 @@ local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg, utilityMsg)
         local timeReceived = computer.uptime()
         if type(msg) ~= "string" then return end
-        if msg:match("function.*[(]") or msg:match("[.:].*[('\")]") then --function and code detection
-            return
+        local illegalFunction, illegalCode = msg:match("function.*[(]"), msg:match("[.:].*[('\")]")
+        if illegalFunction or illegalCode then --function and code detection
+            if illegalFunction or (illegalCode and not illegalCode:match("^[.][0-9]")) then
+                print('Illegal string!', msg)
+                return
+            end
         end
         if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then --entry syncing
             local msgdata, payloadError = serialization.unserialize(msg:sub(8))
