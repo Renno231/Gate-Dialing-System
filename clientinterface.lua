@@ -1009,19 +1009,28 @@ local cmdResultHandler = {
 }
 
 local restrictedKeyCodes = {[14] = true; [15] = true; [28]=true; [29]=true; [42] = true; [54] = true; [56] = true; [58] = true}
+local packetPrefixes = {"gdsgate", "gdsCommandResult:"}
 local EventListeners = {
     modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, msg, utilityMsg)
         local timeReceived = computer.uptime()
         if type(msg) ~= "string" then return end
-        local illegalFunction, illegalCode = msg:match("function.*[(]"), msg:match("[.:].*[('\")]")
+        local illegalFunction, illegalCode = msg:match("function.*[(]"), msg:match("[)][.:].*[('\")]")
+        local msgprefix
+        for _, packetprefix in ipairs (packetPrefixes) do
+            if msg:sub(1, packetprefix:len()) == packetprefix then
+                msgprefix = packetprefix
+                msg = msg:sub(packetprefix:len()+1)
+                break
+            end
+        end
         if illegalFunction or illegalCode then --function and code detection
             if illegalFunction or (illegalCode and not illegalCode:match("^[.][0-9]")) then
                 print('Illegal string!', msg)
                 return
             end
         end
-        if msg:sub(1, 8) == "gdsgate{" and msg:sub(msg:len()) == "}" and msg:len() > 10 then --entry syncing
-            local msgdata, payloadError = serialization.unserialize(msg:sub(8))
+        if msgprefix == "gdsgate" and msg:sub(1,1) == "{" and msg:sub(msg:len()) == "}" and msg:len() > 2 then --entry syncing
+            local msgdata, payloadError = serialization.unserialize(msg)
             --might need to require utilityMsg
             if msgdata==nil or payloadError or type(msgdata)~="table" then return end --print("Invalid message payload") return end
             local newGateType = msgdata.gateType
@@ -1090,13 +1099,12 @@ local EventListeners = {
                     end
                 end
             end
-        elseif msg:sub(1, 17) == "gdsCommandResult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 0.01 then --need to make spam detection better
+        elseif msgprefix == "gdsCommandResult:" and timeReceived - (lastReceived["dialresult"..sender] or 0) > 0.01 then --need to make spam detection better
             local existingEntry, _ = findEntry(sender)
             if existingEntry then --and targetGate
                 lastReceived["dialresult"..sender] = timeReceived
-                local msgpayload = msg:sub(18)
-                if msgpayload:sub(1,1) == "{" then
-                    local msgdata, payloadError = serialization.unserialize(msgpayload) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
+                if msg:sub(1,1) == "{" then
+                    local msgdata, payloadError = serialization.unserialize(msg) --{gateType, address = {MW = ..., }, uuid = modem.address}; might need to sandbox this
                     if msgdata==nil or payloadError or type(msgdata)~="table" then return end 
                     if msgdata.processID then
                         local processTable = processLookup[msgdata.processID]
@@ -1117,7 +1125,7 @@ local EventListeners = {
                     else --idk yet
                     end
                 else
-                    recordToOutput(cmdResPrefix..existingEntry.Name..": "..msgpayload) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
+                    recordToOutput(cmdResPrefix..existingEntry.Name..": "..msg) --..(existingEntry and existingEntry.Name or sender:sub(1,8)).." "
                 end
             end
         end

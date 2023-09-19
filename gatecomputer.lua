@@ -422,7 +422,7 @@ end)
 EventListeners.modem_message = event.listen("modem_message", function(_, receiver, sender, port, distance, wakeup, msg, ...)
     if type(msg) == "string" then
         local currentTime = computer.uptime()
-        local illegalFunction, illegalCode = msg:match("function.*[(]"), msg:match("[.:].*[('\")]")
+        local illegalFunction, illegalCode = msg:match("function.*[(]"), msg:match("[)][.:].*[('\")]")
         if illegalFunction or illegalCode then --function and code detection
             if illegalFunction or (illegalCode and not illegalCode:match("^[.][0-9]")) then
                 print('Illegal string!', msg)
